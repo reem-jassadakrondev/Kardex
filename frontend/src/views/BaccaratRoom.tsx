@@ -1,6 +1,7 @@
 import { Activity, ArrowLeft, BarChart3, Coins, RefreshCcw, Save, ShieldCheck, TrendingUp, WalletCards } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiGet, apiPost } from '../api/client';
 import { CardMatrix } from '../components/CardMatrix';
 import { PlayingCard } from '../components/PlayingCard';
 import { ProbabilityBar } from '../components/ProbabilityBar';
@@ -84,9 +85,7 @@ export function BaccaratRoom() {
   };
 
   const refreshSession = async (id: string) => {
-    const response = await fetch(`http://localhost:8000/api/v1/sessions/${id}`);
-    if (!response.ok) throw new Error('Unable to refresh shoe state');
-    const data = await response.json();
+    const data = await apiGet<ShoeState>(`/sessions/${id}`);
     setShoe(data);
   };
 
@@ -95,9 +94,7 @@ export function BaccaratRoom() {
       setLoading(true);
       setError(null);
       setRoundStatus(null);
-      const response = await fetch('http://localhost:8000/api/v1/sessions', { method: 'POST' });
-      if (!response.ok) throw new Error('Unable to create baccarat session');
-      const data = await response.json();
+      const data = await apiPost<{ session_id: string; shoe: ShoeState }>('/sessions', {});
       setSessionId(data.session_id);
       setShoe(data.shoe);
       setRoadmapRounds([]);
@@ -139,18 +136,7 @@ export function BaccaratRoom() {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch(`http://localhost:8000/api/v1/sessions/${sessionId}/rounds`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const detail = await response.text();
-        throw new Error(detail || 'Unable to create round');
-      }
-
-      const data = await response.json();
+      const data = await apiPost<{ result: string; total_cards_remaining: number }>(`/sessions/${sessionId}/rounds`, payload);
       const won = normalizedResult === activeBet.side;
       const payout = activeBet.side === 'tie' ? activeBet.amount * 8 : activeBet.amount * 1.95;
       const net = won ? payout - activeBet.amount : -activeBet.amount;

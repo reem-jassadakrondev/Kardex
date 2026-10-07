@@ -1,6 +1,7 @@
 import { BarChart3, Dice5, Gauge, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { apiGet } from '../api/client';
 import { GameCard } from '../components/GameCard';
 import { Navbar } from '../components/Navbar';
 
@@ -25,9 +26,7 @@ export function HomeLobby() {
   useEffect(() => {
     const loadGames = async () => {
       try {
-        const response = await fetch('http://localhost:8000/api/v1/games');
-        if (!response.ok) throw new Error('Failed to load games');
-        const data = await response.json();
+        const data = await apiGet<GameOption[]>('/games');
         if (Array.isArray(data) && data.length > 0) {
           setGames(data);
         }
