@@ -25,13 +25,23 @@ export function HomeLobby() {
 
   useEffect(() => {
     const loadGames = async () => {
+      const isConfigured = !!import.meta.env.VITE_API_BASE_URL || window.location.hostname === 'localhost';
+
+      if (!isConfigured) {
+        setGames(fallbackGames);
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const data = await apiGet<GameOption[]>('/games');
         if (Array.isArray(data) && data.length > 0) {
           setGames(data);
         }
       } catch (error) {
-        console.error('Could not load live games:', error);
+        if (import.meta.env.DEV) {
+          console.error('Could not load live games:', error);
+        }
         setGames(fallbackGames);
       } finally {
         setIsLoading(false);

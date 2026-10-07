@@ -90,6 +90,15 @@ export function BaccaratRoom() {
   };
 
   const createSession = async () => {
+    const isConfigured = !!import.meta.env.VITE_API_BASE_URL || window.location.hostname === 'localhost';
+
+    if (!isConfigured) {
+      setLoading(false);
+      setError('ยังไม่ได้กำหนด backend URL สำหรับโหมด production');
+      setRoundStatus('ยังไม่มีเซสชันที่ใช้งาน — ตั้งค่า VITE_API_BASE_URL ก่อนเริ่มเกม');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -101,7 +110,9 @@ export function BaccaratRoom() {
       setPendingBet(null);
       showToast('เริ่มเซสชันใหม่แล้ว', 'success');
     } catch (err) {
-      console.error(err);
+      if (import.meta.env.DEV) {
+        console.error(err);
+      }
       const message = 'Unable to connect to the backend. Please check the API server.';
       setError(message);
       showToast('ไม่สามารถเชื่อมต่อ API ได้', 'error');
