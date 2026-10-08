@@ -79,7 +79,7 @@ export function HomeLobby() {
                 title={game.name}
                 subtitle={
                   isAvailable
-                    ? 'ติดตามกองไพ่ • ตรวจสอบไพ่ที่เหลือ • อัตราผลแบบเรียลไทม์'
+                    ? 'ตรวจสอบไพ่ที่เหลือ • อัตราผลแบบเรียลไทม์'
                     : 'แผนงานสำหรับโต๊ะเกมในอนาคต'
                 }
                 active={isAvailable}
