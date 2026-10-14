@@ -35,14 +35,36 @@ async def init_db() -> None:
         await connection.run_sync(Base.metadata.create_all)
 
     async with SessionLocal() as session:
-        existing_game = await session.get(Game, "baccarat")
-        if existing_game is None:
-            session.add(
-                Game(
-                    code="baccarat",
-                    name="Baccarat",
-                    is_active=True,
-                    rules_config={"min_deck_count": 1, "max_deck_count": 12},
-                )
-            )
-            await session.commit()
+        default_games = [
+            {
+                "code": "baccarat",
+                "name": "Baccarat",
+                "is_active": True,
+                "rules_config": {"min_deck_count": 1, "max_deck_count": 12},
+            },
+            {
+                "code": "dragon_tiger",
+                "name": "เสือมังกร",
+                "is_active": True,
+                "rules_config": {"min_deck_count": 1, "max_deck_count": 8},
+            },
+            {
+                "code": "pokdeng",
+                "name": "โพกเด้ง",
+                "is_active": False,
+                "rules_config": {"min_deck_count": 1, "max_deck_count": 6},
+            },
+            {
+                "code": "sic_bo",
+                "name": "Sic Bo",
+                "is_active": False,
+                "rules_config": {"min_deck_count": 1, "max_deck_count": 4},
+            },
+        ]
+
+        for game_data in default_games:
+            existing_game = await session.get(Game, game_data["code"])
+            if existing_game is None:
+                session.add(Game(**game_data))
+
+        await session.commit()

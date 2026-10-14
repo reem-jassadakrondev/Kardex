@@ -12,17 +12,27 @@ interface GameCardProps {
 
 export function GameCard({ title, subtitle, active = false, badge, actionLabel, onAction, icon: Icon }: GameCardProps) {
   return (
-    <div className={`rounded-2xl border bg-white p-5 shadow-sm transition ${active ? 'border-slate-200 shadow-slate-200/60' : 'border-slate-200/80 bg-slate-50 text-slate-500'}`}>
+    <div
+      className={`rounded-3xl border p-5 shadow-sm transition ${
+        active
+          ? 'border-cyan-400/40 bg-[#0f172a] text-white shadow-[0_18px_50px_rgba(14,165,233,0.12)]'
+          : 'border-slate-200/80 bg-slate-50 text-slate-500'
+      }`}
+    >
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           {Icon ? (
-            <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${active ? 'bg-slate-900 text-white' : 'bg-slate-200 text-slate-600'}`}>
+            <div
+              className={`flex h-10 w-10 items-center justify-center rounded-xl ${
+                active ? 'bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-400/30' : 'bg-slate-200 text-slate-600'
+              }`}
+            >
               <Icon className="h-4 w-4" />
             </div>
           ) : null}
           <div>
-            <p className="text-[10px] uppercase tracking-[0.2em] text-slate-400">เกม</p>
-            <h2 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">{title}</h2>
+            <p className={`text-[10px] uppercase tracking-[0.2em] ${active ? 'text-slate-300' : 'text-slate-400'}`}>เกม</p>
+            <h2 className={`mt-1 text-2xl font-semibold tracking-tight ${active ? 'text-white' : 'text-slate-900'}`}>{title}</h2>
           </div>
         </div>
         {badge ? (
@@ -31,12 +41,12 @@ export function GameCard({ title, subtitle, active = false, badge, actionLabel, 
           </span>
         ) : null}
       </div>
-      <p className="mb-5 text-sm text-slate-600">{subtitle}</p>
+      <p className={`mb-5 text-sm ${active ? 'text-slate-300' : 'text-slate-600'}`}>{subtitle}</p>
       {active ? (
         <button
           type="button"
           onClick={onAction}
-          className="w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white transition hover:bg-slate-700"
+          className="w-full rounded-xl bg-gradient-to-r from-cyan-400 to-blue-500 px-4 py-3 text-sm font-medium text-slate-950 transition hover:brightness-110"
         >
           {actionLabel}
         </button>

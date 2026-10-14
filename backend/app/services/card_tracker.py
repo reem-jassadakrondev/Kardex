@@ -55,3 +55,12 @@ def calculate_probability(shoe: dict[str, int]) -> dict[str, float]:
     banker_pct = (banker_weight / total_weight) * 100
     tie_pct = (tie_weight / total_weight) * 100
     return {"player": round(player_pct, 2), "banker": round(banker_pct, 2), "tie": round(tie_pct, 2)}
+
+
+def calculate_dragon_tiger_probability(shoe: dict[str, int]) -> dict[str, float]:
+    base = calculate_probability(shoe)
+    return {
+        "dragon": base["banker"],
+        "tiger": base["player"],
+        "tie": base["tie"],
+    }

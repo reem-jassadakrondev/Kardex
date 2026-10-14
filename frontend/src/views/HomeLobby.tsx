@@ -14,6 +14,7 @@ interface GameOption {
 
 const fallbackGames: GameOption[] = [
   { code: 'baccarat', name: 'บาคาร่า', is_active: true },
+  { code: 'dragon_tiger', name: 'เสือมังกร', is_active: true },
   { code: 'pokdeng', name: 'โพกเด้ง', is_active: false },
   { code: 'sic_bo', name: 'Sic Bo', is_active: false },
 ];
@@ -65,11 +66,12 @@ export function HomeLobby() {
         <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {games.map((game) => {
             const isBaccarat = game.code === 'baccarat';
-            const isAvailable = game.is_active || isBaccarat;
+            const isDragonTiger = game.code === 'dragon_tiger';
+            const isAvailable = game.is_active || isBaccarat || isDragonTiger;
             const iconMap = {
               baccarat: Gauge,
-              pokdeng: Dice5,
               dragon_tiger: BarChart3,
+              pokdeng: Dice5,
               sic_bo: Sparkles,
             };
 
@@ -85,7 +87,11 @@ export function HomeLobby() {
                 active={isAvailable}
                 badge={isAvailable ? undefined : 'เร็วๆ นี้'}
                 actionLabel={isAvailable ? 'เข้าตาราง' : undefined}
-                onAction={isAvailable ? () => navigate('/baccarat') : undefined}
+                onAction={
+                  isAvailable
+                    ? () => navigate(isDragonTiger ? '/dragon-tiger' : isBaccarat ? '/baccarat' : '/')
+                    : undefined
+                }
                 icon={iconMap[game.code as keyof typeof iconMap] || Gauge}
               />
             );
