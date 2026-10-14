@@ -8,7 +8,7 @@ interface DragonTigerBeadPlateProps {
 function beadStyle(side: DragonTigerSide) {
   if (side === 'dragon') return 'bg-blue-600 text-white';
   if (side === 'tiger') return 'bg-red-600 text-white';
-  return 'bg-emerald-500 text-white';
+  return 'bg-emerald-600 text-white';
 }
 
 function beadLabel(side: DragonTigerSide) {
@@ -22,13 +22,13 @@ export function DragonTigerBeadPlate({ rounds }: DragonTigerBeadPlateProps) {
 
   return (
     <div className="overflow-auto">
-      <div className="space-y-0.5">
+      <div className="space-y-1">
         {rows.map((row, rowIndex) => (
-          <div key={rowIndex} className="flex min-h-6 gap-0.5">
+          <div key={rowIndex} className="flex min-h-7 gap-1">
             {row.map((side, cellIndex) => (
               <div
                 key={`${rowIndex}-${cellIndex}`}
-                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold ${beadStyle(side)}`}
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${beadStyle(side)}`}
               >
                 {beadLabel(side)}
               </div>
