@@ -31,6 +31,18 @@
 | GET | `/api/v1/sessions/{id}` | สถานะ shoe |
 | POST | `/api/v1/sessions/{id}/rounds` | บันทึกรอบบาคาร่า |
 | GET | `/api/v1/sessions/{id}/roadmaps` | roadmap (ยังไม่มีหน้าไหนเรียกใช้) |
+| GET | `/api/v1/tables/{code}` | สถานะโต๊ะตารางสี: version, ช่องถัดไป (`cursor`), สถิติ |
+| GET | `/api/v1/tables/{code}/grid?before_round=&limit=50` | รอบล่าสุด (เลื่อนดูย้อนหลังด้วย `before_round`) |
+| POST | `/api/v1/tables/{code}/plays` | `{"value": "R"\|"B"\|"Y"\|"K"\|"G"\|"-", "version": n}` บันทึกช่องถัดไป (`-` = ข้าม) |
+| DELETE | `/api/v1/tables/{code}/plays/last?version=n` | ลบตัวสุดท้าย |
+| POST | `/api/v1/tables/{code}/rounds/current/end` | `{"version": n}` จบรอบก่อนครบ |
+| DELETE | `/api/v1/tables/{code}/rounds/current?version=n` | ทิ้งรอบปัจจุบัน |
+
+ตารางสี (`/tables/...`):
+- ทุก endpoint รับ `?from_round=&to_round=` เพื่อกำหนดช่วงที่ใช้คำนวณสถิติ (ไม่ใส่ = ทั้งหมด)
+- คำสั่งเขียนตอบสถานะ + สถิติของช่องถัดไป + รอบที่เปลี่ยน (`round`, หรือ `removed_round_no` ถ้ารอบถูกลบ)
+- `version` ไม่ตรงกับ server → **409** พร้อม `current_version` (มีเครื่องอื่นแก้ไปแล้ว ให้โหลดใหม่)
+- ส่ง header `X-Device-Id` เพื่อบันทึกว่าเครื่องไหนแก้ (ไม่บังคับ)
 
 ## การรัน
 
@@ -44,6 +56,7 @@ cp .env.example .env        # ใส่รหัสผ่าน Supabase หร�
 alembic upgrade head        # ต้องรันทุกครั้งที่มี migration ใหม่
 uvicorn app.main:app --reload
 pytest                      # รันเทสต์ (ใช้ SQLite ชั่วคราว ไม่แตะฐานข้อมูลจริง)
+python -m scripts.bench_dt --rounds 1000000   # วัดความเร็วสถิติบนข้อมูลจำลอง (SQLite ชั่วคราว)
 ```
 
 - backend โหลด `backend/.env` อัตโนมัติ (env var ของเครื่อง/โฮสต์มีลำดับสูงกว่า)
@@ -78,7 +91,8 @@ npm run lint && npm run build
 |-------|-----------|
 | `games` | รายการเกม (seed: `baccarat`, `dragon_tiger`, `pokdeng`, `sic_bo`) |
 | `game_sessions`, `rounds` | เซสชันและรอบของบาคาร่า |
-| `game_tables` | โต๊ะที่บันทึกตารางสี (seed: `dt-1` เสือมังกร 60 ตา/รอบ) |
+| `game_tables` | โต๊ะที่บันทึกตารางสี (seed: `dt-1` เสือมังกร 60 ตา/รอบ) + `version` |
+| `dt_rounds`, `dt_block_counts`, `dt_play_events` | ตารางสี (ดูรายละเอียดด้านล่าง) |
 
 ---
 
@@ -111,41 +125,41 @@ npm run lint && npm run build
 ### การออกแบบฐานข้อมูล
 
 ```
-game_tables      (มีแล้ว) id, code, name, game_code, plays_per_round=60, created_at
+game_tables      id, code, name, game_code, plays_per_round=60,
+                 version (optimistic lock ระดับโต๊ะ — เพิ่มทุกครั้งที่เขียน), created_at
 
-dt_rounds        id, table_id, round_no (1..N ต่อเนื่องต่อโต๊ะ),
+dt_rounds        PK(table_id, round_no)   round_no = 1..N ต่อเนื่องต่อโต๊ะ
                  results VARCHAR(60)   'RBB-YKG…'  1 ตัวอักษร = 1 ตา, '-' = ข้าม
-                 play_count, status (open | complete | ended_early),
-                 version (optimistic lock), created_at, updated_at
-                 UNIQUE(table_id, round_no)
+                 status (open | complete | ended_early), created_at, updated_at
 
-dt_block_counts  table_id, block_no (บล็อกละ 1,000 รอบ), position (1..60), color, count
-                 PK(table_id, block_no, position, color) — อัปเดต ±1 ใน transaction เดียวกับการบันทึก
+dt_block_counts  PK(table_id, position, block_no, color), count
+                 บล็อกละ 1,000 รอบ — อัปเดต ±1 ใน transaction เดียวกับการบันทึก
 
-dt_play_events   log ทุกการกด (add / skip / delete / end / discard, device_id, เวลา)
-                 ใช้ตรวจย้อนหลังและคำนวณ dt_block_counts ใหม่ได้
+dt_play_events   log ทุกการกด (add / skip / delete / end_round / discard_round, device_id, เวลา)
 ```
 
-- เก็บผลทั้งรอบเป็นสตริง: 1 ล้านรอบ ≈ 100 MB (ถ้าแยก 1 แถวต่อตาจะเป็น 60 ล้านแถว ≈ 3 GB+ เกินโควตา Supabase Free 500 MB)
+- `version` อยู่ระดับโต๊ะ (ไม่ใช่ต่อรอบ) เพราะ "ลบตัวสุดท้าย" ย้อนข้ามรอบได้ · UPDATE แบบมีเงื่อนไขล็อกแถวโต๊ะไว้จน commit จึงเขียนพร้อมกันไม่ได้
+- ตัวนับเพี้ยน → `dt_grid.verify_counts()` ตรวจ, `dt_grid.rebuild_counts()` คำนวณใหม่จาก `dt_rounds`
+- เก็บผลทั้งรอบเป็นสตริง: 1 ล้านรอบ ≈ 134 MB บน SQLite (วัดจริง) (ถ้าแยก 1 แถวต่อตาจะเป็น 60 ล้านแถว ≈ 3 GB+ เกินโควตา Supabase Free 500 MB)
 - **คำนวณช่วงรอบ** = รวม `dt_block_counts` ของบล็อกที่อยู่ในช่วงเต็มๆ + สแกนเศษหัว/ท้ายไม่เกิน 1,998 รอบ → ช่วง 500,000–999,999 อ่านแค่ 500 บล็อก ไม่ต้องดึงข้อมูลดิบ
 - "ทิ้งรอบ" ทำได้เฉพาะรอบปัจจุบัน (รอบสุดท้าย) จึงลบจริงได้โดย `round_no` ยังต่อเนื่อง
 - "ลบตัวสุดท้าย" เมื่อรอบปัจจุบันว่าง → ย้อนไปเปิดรอบก่อนหน้า (มีหน้ายืนยัน)
 - ถ้าข้อมูลโตถึงระดับ 100 ล้านรอบ เพิ่ม prefix sum อีกชั้นได้โดยไม่ต้องรื้อ
 
-### API (วางแผน)
+### API
 
-```
-GET    /api/v1/tables/{id}/grid?before_round=&limit=50
-POST   /api/v1/tables/{id}/plays          {color | "skip", version}
-DELETE /api/v1/tables/{id}/plays/last     {version}
-POST   /api/v1/tables/{id}/rounds/current/end
-DELETE /api/v1/tables/{id}/rounds/current
-GET    /api/v1/tables/{id}/stats?from_round=&to_round=
-```
+ดูตาราง [API](#api) ด้านบน · คำสั่งเขียนตอบสถิติกลับมาด้วย (1 จิ้ม = 1 request) · เครื่องอื่น polling `GET /tables/{code}` ทุก 3–5 วินาที แล้วโหลด grid ใหม่เมื่อ `version` เปลี่ยน
 
-- คำสั่งเขียนทุกตัวตอบสถิติของช่องถัดไปกลับมาด้วย (1 จิ้ม = 1 request)
-- `version` ไม่ตรง → 409 ให้ client โหลดใหม่ (กันหลายเครื่องเขียนชนกัน)
-- เครื่องอื่น polling ทุก 3–5 วินาที
+### ผลวัดความเร็ว (M1, `scripts/bench_dt.py`, 1 ล้านรอบ, SQLite บน Mac)
+
+| คำสั่ง | เวลา |
+|---|---|
+| สถิติจากทุกรอบ | 2.6 ms |
+| สถิติรอบ 500,000–999,999 | 1.8 ms |
+| สถิติ 1,000 รอบล่าสุด | 0.4 ms |
+| บันทึก 1 ช่อง / ลบตัวสุดท้าย | ~2 ms |
+
+บน Supabase จะช้ากว่านี้ตาม network latency (Sydney) แต่จำนวน query ต่อคำสั่งคงที่ ไม่ขึ้นกับจำนวนรอบ
 
 ### หน้าจอ
 
@@ -175,7 +189,7 @@ GET    /api/v1/tables/{id}/stats?from_round=&to_round=
 ### ลำดับงาน
 
 - [x] **M0 เตรียมฐาน** — Alembic + migration baseline, โหลด `.env`, แก้ URL Supabase สำหรับ asyncpg, ตาราง `game_tables`, ลบโค้ดเสือมังกร/เดิมพันเดิม, แก้ lint, ลบ Supabase SDK ที่ไม่ได้ใช้, pytest, ย้ายไป Python 3.12, migrate Supabase ถึง `0002` แล้ว (2026-10-18)
-- [ ] **M1 Backend** — `dt_rounds` / `dt_block_counts` / `dt_play_events`, stats engine, API, pytest (fallback, ข้ามช่อง, ลบข้ามรอบ, ขอบบล็อก, ช่วงรอบ), seed 1 ล้านรอบวัดความเร็ว
+- [x] **M1 Backend** — `dt_rounds` / `dt_block_counts` / `dt_play_events`, stats engine, API, pytest 26 ข้อ (รวมเทสต์สุ่ม 400 คำสั่งเทียบกับการนับตรง), benchmark 1 ล้านรอบ, migrate Supabase ถึง `0003` แล้ว (2026-10-18)
 - [ ] **M2 Frontend** — ตาราง, ปุ่มสี, แผงสถิติ, ตัวเลือกช่วงรอบ, polling
 - [ ] **M3 Legacy** — plugin-legacy + ทดสอบบนเครื่องจริง/BrowserStack
 - [ ] **M4 Deploy** — PIN, hosting, คู่มือผู้ใช้

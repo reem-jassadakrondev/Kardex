@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.dt_tables import router as dt_tables_router
 from app.api.v1.games import router as games_router
 from app.api.v1.router import router as root_router
 from app.api.v1.sessions import router as sessions_router
@@ -20,6 +21,7 @@ app.add_middleware(
 app.include_router(root_router)
 app.include_router(games_router, prefix="/api/v1")
 app.include_router(sessions_router, prefix="/api/v1")
+app.include_router(dt_tables_router, prefix="/api/v1")
 
 
 @app.get("/")

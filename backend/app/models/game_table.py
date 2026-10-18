@@ -18,4 +18,6 @@ class GameTable(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     game_code: Mapped[str] = mapped_column(ForeignKey("games.code"), nullable=False)
     plays_per_round: Mapped[int] = mapped_column(SmallInteger, default=60, nullable=False)
+    # Bumped on every grid write; clients send the version they saw (optimistic lock across devices).
+    version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
