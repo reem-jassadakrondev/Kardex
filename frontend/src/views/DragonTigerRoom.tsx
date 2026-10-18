@@ -101,7 +101,7 @@ export function DragonTigerRoom() {
       <header className="dtg-header">
         <button type="button" className="dtg-btn" onClick={() => navigate('/')}>
           <ArrowLeft className="dtg-icon" />
-          Lobby
+          หน้าหลัก
         </button>
         <div className="dtg-header__title">
           <h1>เสือมังกร · {state ? state.table.name : '…'}</h1>

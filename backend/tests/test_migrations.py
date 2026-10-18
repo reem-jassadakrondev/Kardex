@@ -31,8 +31,9 @@ def test_upgrade_creates_schema_and_seeds(tmp_path: Path) -> None:
         games = {row[0] for row in conn.execute("SELECT code FROM games")}
         game_tables = conn.execute("SELECT code, game_code, plays_per_round FROM game_tables").fetchall()
 
-    assert {"games", "game_sessions", "rounds", "game_tables", "alembic_version"} <= tables
-    assert games == {"baccarat", "dragon_tiger", "pokdeng", "sic_bo"}
+    assert {"games", "game_tables", "dt_rounds", "dt_block_counts", "dt_play_events", "alembic_version"} <= tables
+    assert not {"game_sessions", "rounds"} & tables  # Baccarat prototype dropped in 0004
+    assert games == {"dragon_tiger"}
     assert game_tables == [("dt-1", "dragon_tiger", 60)]
 
 

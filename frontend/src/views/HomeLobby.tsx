@@ -1,97 +1,55 @@
-import { BarChart3, Dice5, Gauge, Sparkles } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiGet } from '../api/client';
-import { GameCard } from '../components/GameCard';
-import { Navbar } from '../components/Navbar';
+import { dtGridApi, type TableState } from '../api/dtGrid';
+import './home.css';
 
-interface GameOption {
-  code: string;
-  name: string;
-  is_active: boolean;
-  rules_config?: Record<string, unknown>;
-}
-
-const fallbackGames: GameOption[] = [
-  { code: 'baccarat', name: 'บาคาร่า', is_active: true },
-  { code: 'dragon_tiger', name: 'เสือมังกร', is_active: true },
-  { code: 'pokdeng', name: 'โพกเด้ง', is_active: false },
-  { code: 'sic_bo', name: 'Sic Bo', is_active: false },
-];
+const TABLE_CODE = 'dt-1';
 
 export function HomeLobby() {
   const navigate = useNavigate();
-  const [games, setGames] = useState<GameOption[]>(fallbackGames);
-  const [isLoading, setIsLoading] = useState(true);
+  const [table, setTable] = useState<TableState | null>(null);
+  const [online, setOnline] = useState<boolean | null>(null);
 
   useEffect(() => {
-    const loadGames = async () => {
-      try {
-        const data = await apiGet<GameOption[]>('/games');
-        if (Array.isArray(data) && data.length > 0) {
-          setGames(data);
-        }
-      } catch (error) {
-        if (import.meta.env.DEV) {
-          console.error('Could not load live games:', error);
-        }
-        setGames(fallbackGames);
-      } finally {
-        setIsLoading(false);
-      }
+    let cancelled = false;
+    dtGridApi
+      .state(TABLE_CODE, {})
+      .then((state) => {
+        if (cancelled) return;
+        setTable(state);
+        setOnline(true);
+      })
+      .catch(() => {
+        if (!cancelled) setOnline(false);
+      });
+    return () => {
+      cancelled = true;
     };
-
-    void loadGames();
   }, []);
 
+  let summary = 'กำลังโหลด…';
+  if (table) summary = `${table.table.name} · ${table.total_rounds.toLocaleString()} รอบ`;
+  else if (online === false) summary = 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้';
+
   return (
-    <div className="min-h-screen bg-stone-100 px-4 py-8 text-slate-900">
-      <div className="mx-auto max-w-6xl">
-        <Navbar />
+    <div className="home">
+      <header className="home__header">
+        <span className="home__brand">Kardex</span>
+        {online === null ? null : (
+          <span className={online ? 'home__status home__status--on' : 'home__status home__status--off'}>
+            {online ? 'ออนไลน์' : 'ออฟไลน์'}
+          </span>
+        )}
+      </header>
 
-        {isLoading ? (
-          <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">
-            กำลังโหลดเกมจากเซิร์ฟเวอร์...
-          </div>
-        ) : null}
-
-        {/* flex-wrap + padding instead of grid/gap: old iPads (iOS < 10.3) have neither */}
-        <div className="-mx-2.5 mt-8 flex flex-wrap">
-          {games.map((game) => {
-            const isBaccarat = game.code === 'baccarat';
-            const isDragonTiger = game.code === 'dragon_tiger';
-            const isAvailable = game.is_active || isBaccarat || isDragonTiger;
-            const iconMap = {
-              baccarat: Gauge,
-              dragon_tiger: BarChart3,
-              pokdeng: Dice5,
-              sic_bo: Sparkles,
-            };
-
-            return (
-              <div key={game.code} className="mb-5 w-full px-2.5 md:w-1/2 xl:w-1/4">
-                <GameCard
-                  title={game.name}
-                  subtitle={
-                    isAvailable
-                      ? 'ตรวจสอบไพ่ที่เหลือ • อัตราผลแบบเรียลไทม์'
-                      : 'แผนงานสำหรับโต๊ะเกมในอนาคต'
-                  }
-                  active={isAvailable}
-                  badge={isAvailable ? undefined : 'เร็วๆ นี้'}
-                  actionLabel={isAvailable ? 'เข้าตาราง' : undefined}
-                  onAction={
-                    isAvailable
-                      ? () => navigate(isDragonTiger ? '/dragon-tiger' : isBaccarat ? '/baccarat' : '/')
-                      : undefined
-                  }
-                  icon={iconMap[game.code as keyof typeof iconMap] || Gauge}
-                />
-              </div>
-            );
-          })}
-        </div>
-      </div>
+      <button type="button" className="home__entry" onClick={() => navigate('/dragon-tiger')}>
+        <span className="home__entry-text">
+          <span className="home__entry-title">เสือมังกร</span>
+          <span className="home__entry-sub">{summary}</span>
+        </span>
+        <ChevronRight className="home__chevron" />
+      </button>
     </div>
   );
 }

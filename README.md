@@ -1,6 +1,6 @@
 # Kardex
 
-เว็บแอปเก็บสถิติโต๊ะเกมไพ่ ประกอบด้วย **Frontend (React + Vite + TypeScript + Tailwind)** และ **Backend (FastAPI + SQLAlchemy async + Alembic)** ฐานข้อมูลใช้ **PostgreSQL ติดตั้งบนเครื่องเดียวกับ backend** (ทั้งเครื่องพัฒนาและเครื่อง server ของลูกค้า)
+เว็บแอปเก็บสถิติโต๊ะเกมไพ่ ประกอบด้วย **Frontend (React + Vite + TypeScript, CSS ธรรมดา)** และ **Backend (FastAPI + SQLAlchemy async + Alembic)** ฐานข้อมูลใช้ **PostgreSQL ติดตั้งบนเครื่องเดียวกับ backend** (ทั้งเครื่องพัฒนาและเครื่อง server ของลูกค้า)
 
 > **ตัดสินใจ 2026-10-18:** เลิกใช้ Supabase — ทดสอบจริงแล้ว backend ที่ไทยต่อ DB ที่ Sydney ทำให้จิ้ม 1 ครั้งใช้ 4–10 วินาที ส่วน backend + PostgreSQL เครื่องเดียวกันใช้ ~3 ms จึงติดตั้งทั้งระบบบนเครื่องของลูกค้า (on-premise)
 
@@ -24,8 +24,7 @@
 
 | เส้นทาง | หน้า | สถานะ |
 |---------|------|--------|
-| `/` | Home Lobby — รายการเกมจาก API | ใช้งานได้ |
-| `/baccarat` | บาคาร่า — ติดตาม shoe, Big Road / Bead Plate, โต๊ะเดิมพันจำลอง | ใช้งานได้ (ไม่อยู่ในขอบเขตเฟส 1) |
+| `/` | หน้าหลัก — ทางเข้าเสือมังกร + จำนวนรอบ + สถานะเชื่อมต่อ | ใช้งานได้ |
 | `/dragon-tiger` | เสือมังกร — ตารางสี 60 คอลัมน์ + อัตราการออก (โต๊ะ `dt-1`) | ใช้งานได้ (เฟส 1) |
 
 ## API
@@ -33,11 +32,6 @@
 | Method | Path | หมายเหตุ |
 |--------|------|----------|
 | GET | `/api/v1/health` | |
-| GET | `/api/v1/games` | รายการเกม |
-| POST | `/api/v1/sessions` | สร้างเซสชันบาคาร่า (`game_code` อื่นตอบ 400) |
-| GET | `/api/v1/sessions/{id}` | สถานะ shoe |
-| POST | `/api/v1/sessions/{id}/rounds` | บันทึกรอบบาคาร่า |
-| GET | `/api/v1/sessions/{id}/roadmaps` | roadmap (ยังไม่มีหน้าไหนเรียกใช้) |
 | GET | `/api/v1/tables/{code}` | สถานะโต๊ะตารางสี: version, ช่องถัดไป (`cursor`), สถิติ |
 | GET | `/api/v1/tables/{code}/grid?before_round=&limit=50` | รอบล่าสุด (เลื่อนดูย้อนหลังด้วย `before_round`) |
 | POST | `/api/v1/tables/{code}/plays` | `{"value": "R"\|"B"\|"Y"\|"K"\|"G"\|"-", "version": n}` บันทึกช่องถัดไป (`-` = ข้าม) |
@@ -85,7 +79,7 @@ npm run check:legacy        # ตรวจว่า JS ที่ build ออก
 **Build สำหรับเครื่องเก่า (M3):** เป้าหมายเบราว์เซอร์อยู่ที่ `"browserslist"` ใน `package.json` ที่เดียว (Babel / plugin-legacy / postcss-preset-env ใช้ร่วมกัน)
 - build เฉพาะ legacy chunk (ES5 + core-js polyfill ผ่าน SystemJS) ให้ทุกเบราว์เซอร์ — iOS 11–13 รองรับ `type="module"` แต่ไม่รองรับ syntax ใหม่ ถ้ามี modern bundle เครื่องกลุ่มนี้จะพัง
 - minify ด้วย terser (oxc ของ Vite 8 เปลี่ยน output เป็น ES2015) + plugin `kardex:es5-polyfill-chunk` แปลง polyfill chunk เป็น ES5 อีกรอบ (rolldown ใส่ arrow function)
-- `whatwg-fetch` สำหรับ iOS < 10.3 · Tailwind ปิด opacity plugins ให้สีเป็น hex · หน้าเสือมังกรใช้ CSS ธรรมดา (`dragonTiger.css`) · Lobby ไม่ใช้ `gap`/grid
+- `whatwg-fetch` สำหรับ iOS < 10.3 · ทุกหน้าใช้ CSS ธรรมดา (`index.css`, `home.css`, `dragonTiger.css`) สีเป็น hex · ไม่มี Tailwind แล้ว
 - CSS ถูกฝังใน JS (โหมด legacy อย่างเดียว) · backend เปิด gzip: bundle ~530 KB → ~170 KB
 
 - หน้าเว็บเรียก `/api/v1` บน origin เดียวกันเป็นค่าเริ่มต้น — ตั้ง `VITE_API_BASE_URL` เฉพาะตอนที่ API อยู่คนละที่ **ห้ามตั้งเป็น `localhost` ตอน build ไปใช้จริง** (iPad จะยิงไปที่ตัวเอง)
@@ -137,8 +131,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 | ตาราง | ใช้ทำอะไร |
 |-------|-----------|
-| `games` | รายการเกม (seed: `baccarat`, `dragon_tiger`, `pokdeng`, `sic_bo`) |
-| `game_sessions`, `rounds` | เซสชันและรอบของบาคาร่า |
+| `games` | ประเภทเกม (เหลือ `dragon_tiger` — migration `0004` ลบบาคาร่าและตาราง `game_sessions`/`rounds`) |
 | `game_tables` | โต๊ะที่บันทึกตารางสี (seed: `dt-1` เสือมังกร 60 ตา/รอบ) + `version` |
 | `dt_rounds`, `dt_block_counts`, `dt_play_events` | ตารางสี (ดูรายละเอียดด้านล่าง) |
 
@@ -237,7 +230,7 @@ python -m scripts.bench_dt --rounds 1000000 --database-url "postgresql+asyncpg:/
 | ทดสอบแล้ว | Chrome (ใช้ bundle ES5 ชุดเดียวกัน) โดยลบ `fetch`, `Promise.finally`, `Array.includes/find`, `Object.entries/assign` ฯลฯ ออกก่อนโหลด → ใช้งานครบทุกฟังก์ชัน | จำลองเครื่องเก่าเท่านั้น |
 | **ยังต้องทดสอบ** | **iPad / Android รุ่นเก่าเครื่องจริง** | เปิด `http://<IP เครื่อง server>:8000/dragon-tiger` ใน WiFi เดียวกัน |
 
-ข้อห้ามใน CSS: ห้ามใช้ `flex gap`, `aspect-ratio`, `inset` · ตั้ง Tailwind ให้สีออกเป็น hex (iOS 10–12.0 ไม่รองรับ `rgb(r g b / a)`)
+ข้อห้ามใน CSS: ห้ามใช้ `flex gap`, `aspect-ratio`, `inset` · สีใช้ hex (iOS 10–12.0 ไม่รองรับ `rgb(r g b / a)`)
 
 ### ความเสี่ยงอื่น
 
@@ -264,10 +257,4 @@ python -m scripts.bench_dt --rounds 1000000 --database-url "postgresql+asyncpg:/
   - [ ] **ทดสอบบน Windows Server จริง** (Task Scheduler, firewall, PowerShell 5.1 — ทดสอบบน Mac ไม่ได้)
   - [ ] ตั้งสำเนา backup ไป cloud ของ dev (เลือกบริการ) · ทดสอบกู้คืนบนเครื่องลูกค้า
   - [ ] ใช้งานนอกสถานที่ (ตัดสินใจ: Cloudflare Tunnel / notebook) · คู่มือผู้ใช้ (คนบันทึก)
-
-### ปัญหาที่รู้แล้วนอกขอบเขตเฟส 1 (บาคาร่า)
-
-- ความน่าจะเป็นใน `card_tracker.calculate_probability` เป็นสูตรประมาณที่ไม่มีหลักคณิตศาสตร์
-- ไม่เลือกไพ่ → backend ใส่ไพ่ปลอม `H9 H8 D7 D6` และหักออกจาก shoe · ไม่รองรับไพ่ใบที่ 3
-- อัตราจ่ายในโต๊ะจำลอง: ผู้เล่นได้ 0.95 (ควร 1:1), เสมอได้สุทธิ 7 เท่า (ควร 8)
-- ข้อมูลอยู่แค่ใน state ของหน้า รีเฟรชแล้วหาย
+- [x] **ตัดส่วนที่ไม่ใช้** — ลบบาคาร่า/โพกเด้ง/Sic Bo ทั้ง frontend + backend + ตาราง (migration `0004`), เอา Tailwind/clsx/tailwind-merge ออก, หน้าหลักเหลือเสือมังกรอย่างเดียว ดีไซน์มินิมอลโทนขาว (2026-10-18)

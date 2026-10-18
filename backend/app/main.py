@@ -5,9 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api.v1.dt_tables import router as dt_tables_router
-from app.api.v1.games import router as games_router
 from app.api.v1.router import router as root_router
-from app.api.v1.sessions import router as sessions_router
 from app.core.config import settings
 from app.core.frontend import mount_frontend
 
@@ -25,8 +23,6 @@ app.add_middleware(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(root_router)
-app.include_router(games_router, prefix="/api/v1")
-app.include_router(sessions_router, prefix="/api/v1")
 app.include_router(dt_tables_router, prefix="/api/v1")
 
 # Registered last: its catch-all route must not shadow the API.
