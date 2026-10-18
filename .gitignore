@@ -19,3 +19,8 @@ frontend/.vite/
 # Editor / OS
 .DS_Store
 .vscode/
+
+# Windows deploy runtime + packages
+logs/
+backups/
+release/

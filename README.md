@@ -17,6 +17,8 @@
 | `backend/app/` | API (`api/v1`), models, services |
 | `backend/alembic/` | migration ของฐานข้อมูล |
 | `backend/tests/` | pytest |
+| `deploy/build-package.sh` | สร้างไฟล์ติดตั้ง `release/kardex-<version>.zip` สำหรับเครื่องลูกค้า |
+| `deploy/windows/` | สคริปต์ติดตั้ง/อัปเดต/backup/restore บน Windows Server + **[คู่มือติดตั้ง INSTALL.md](deploy/windows/INSTALL.md)** |
 
 ## หน้าและเส้นทาง
 
@@ -100,7 +102,11 @@ npm run check:legacy        # ตรวจว่า JS ที่ build ออก
 
 เครื่องพัฒนาตอนนี้ใช้ `kardex` / `kardex-local` (รหัสสำหรับทดสอบเท่านั้น — เครื่องลูกค้าต้องตั้งรหัสใหม่)
 
-### ติดตั้งแบบเครื่องเดียว (on-premise — แนะนำ)
+### ติดตั้งเครื่องลูกค้า (Windows Server)
+
+ดู **[deploy/windows/INSTALL.md](deploy/windows/INSTALL.md)** — สรุป: `deploy/build-package.sh` บนเครื่อง dev → copy zip ไป server → แตกที่ `C:\Kardex` → `install.bat` (Run as administrator)
+
+### ติดตั้งแบบเครื่องเดียวด้วยมือ (macOS/Linux หรือทดสอบ)
 
 backend เสิร์ฟหน้าเว็บที่ build แล้ว (`frontend/dist`) เอง → backend + PostgreSQL บนเครื่องเดียว, ไม่ต้องใช้ cloud
 
@@ -114,13 +120,13 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 - iPad/มือถือใน WiFi เดียวกันเปิด `http://<IP ของเครื่อง server>:8000/dragon-tiger` — ใช้ `http://` ใน LAN ได้ จึงไม่ติดปัญหาใบรับรอง HTTPS ของอุปกรณ์รุ่นเก่า
 - `FRONTEND_DIST` เปลี่ยนตำแหน่งโฟลเดอร์ build ได้ (ไม่มี `index.html` → ไม่เสิร์ฟหน้าเว็บ)
-- ต้องตั้ง backup อัตโนมัติ (`pg_dump`) ไปเครื่อง/ที่เก็บอื่น — ยังไม่ได้ทำ
+- backup ด้วยมือ: `pwsh deploy/windows/backup.ps1` ใช้ได้ทุก OS (ต้องมี PowerShell 7) หรือ `pg_dump -Fc`
 
 ### Windows demo
 
 `install_prereqs.bat` → `setup_demo.bat` → `start_demo.bat` (รัน `alembic upgrade head` ให้อัตโนมัติ) → `stop_demo.bat`
 
-ต้องติดตั้ง PostgreSQL และสร้าง user `kardex` / `kardex-local` ตามหัวข้อด้านบนก่อน (`backend/.env.demo` ชี้ไปที่นั่น) — สคริปต์ยังไม่ติดตั้ง PostgreSQL ให้ จะทำเป็นชุดติดตั้งเครื่องลูกค้าเมื่อรู้ OS ของ server
+สำหรับเดโมบนเครื่อง dev เท่านั้น (ต้องมี Node + PostgreSQL ที่มี user `kardex` / `kardex-local`) — **ติดตั้งเครื่องลูกค้าใช้ `deploy/windows/` แทน**
 
 ### บทเรียนเรื่อง latency (จากการทดสอบ Supabase ก่อนเลิกใช้)
 
@@ -252,7 +258,12 @@ python -m scripts.bench_dt --rounds 1000000 --database-url "postgresql+asyncpg:/
 - [x] **M2 Frontend** — ตาราง, ปุ่มสี, แผงสถิติ, ตัวเลือกช่วงรอบ, polling, `last_rounds` ที่ backend · ทดสอบใน Chrome (iPad landscape/portrait, มือถือ, 2 เครื่องพร้อมกัน, 409) (2026-10-18)
 - [ ] **M3 Legacy** — build ES5 + polyfills เสร็จ, ผ่าน `check:legacy`, ทดสอบจำลองใน Chrome ผ่าน (2026-10-18) · **เหลือ: ทดสอบบน iPad/Android เครื่องจริง**
 - [x] **เปลี่ยนเป็น PostgreSQL บนเครื่องเดียวกัน** — เลิกใช้ Supabase, backend เสิร์ฟหน้าเว็บเอง, จิ้มต่อเนื่องได้ (คิว), จิ้ม 1 ครั้ง = 6 query, benchmark 1 ล้านรอบบน PostgreSQL (2026-10-18)
-- [ ] **M4 ติดตั้งเครื่องลูกค้า** — ชุดติดตั้งตาม OS ของ server, เริ่มเองตอนเปิดเครื่อง, backup อัตโนมัติ, PIN, คู่มือผู้ใช้
+- [ ] **M4 ติดตั้งเครื่องลูกค้า** (Windows Server ~2016, iPad Gen 4, remote + หน้างาน, backup → cloud ของ dev/USB, ยังไม่ต้อง PIN)
+  - [x] ชุดติดตั้ง `deploy/build-package.sh` + `deploy/windows/` (install / update / backup / restore / status), server เริ่มเองตอนเปิดเครื่องและรีสตาร์ทเองถ้าล่ม, backup ทุกวัน + สำเนาไป cloud/USB, คู่มือ INSTALL.md (2026-10-18)
+  - [x] ทดสอบบน macOS ด้วย PowerShell 7 + PostgreSQL cluster ชั่วคราว: ติดตั้ง, บันทึก, status, backup, restore, server ล่มแล้วกลับมาเอง, อัปเดตเวอร์ชัน (ข้อมูล/.env อยู่ครบ)
+  - [ ] **ทดสอบบน Windows Server จริง** (Task Scheduler, firewall, PowerShell 5.1 — ทดสอบบน Mac ไม่ได้)
+  - [ ] ตั้งสำเนา backup ไป cloud ของ dev (เลือกบริการ) · ทดสอบกู้คืนบนเครื่องลูกค้า
+  - [ ] ใช้งานนอกสถานที่ (ตัดสินใจ: Cloudflare Tunnel / notebook) · คู่มือผู้ใช้ (คนบันทึก)
 
 ### ปัญหาที่รู้แล้วนอกขอบเขตเฟส 1 (บาคาร่า)
 
