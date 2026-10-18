@@ -84,10 +84,10 @@ export function DragonTigerRoom() {
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      const key = event.key.toUpperCase();
+      const key = (event.key || '').toUpperCase(); // event.key is undefined on iOS < 10.1
       if (isColor(key)) handlers.current.record(key);
       else if (key === '-' || key === 'S') handlers.current.record('-');
-      else if (event.key === 'Backspace') {
+      else if (event.key === 'Backspace' || event.keyCode === 8) {
         event.preventDefault();
         handlers.current.requestUndo();
       } else if (event.key === 'Escape') setConfirm(null);

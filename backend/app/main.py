@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 
 from app.api.v1.dt_tables import router as dt_tables_router
 from app.api.v1.games import router as games_router
@@ -19,6 +20,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# The legacy (ES5 + polyfills) frontend bundle is ~530 KB; gzip brings it to ~170 KB for slow old iPads.
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 app.include_router(root_router)
 app.include_router(games_router, prefix="/api/v1")

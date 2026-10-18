@@ -19,8 +19,8 @@ export function GameCard({ title, subtitle, active = false, badge, actionLabel, 
           : 'border-slate-200/80 bg-slate-50 text-slate-500'
       }`}
     >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div className="mb-4 flex items-start justify-between">
+        <div className="mr-3 flex items-center space-x-3">
           {Icon ? (
             <div
               className={`flex h-10 w-10 items-center justify-center rounded-xl ${

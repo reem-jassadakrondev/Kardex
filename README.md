@@ -77,7 +77,14 @@ cd frontend
 npm install
 npm run dev                 # proxy /api → localhost:8000 (เปลี่ยนได้ด้วย KARDEX_API_PROXY)
 npm run lint && npm run build
+npm run check:legacy        # ตรวจว่า JS ที่ build ออกมาเป็น ES5 ทั้งหมด (ต้องผ่านก่อนส่งงาน)
 ```
+
+**Build สำหรับเครื่องเก่า (M3):** เป้าหมายเบราว์เซอร์อยู่ที่ `"browserslist"` ใน `package.json` ที่เดียว (Babel / plugin-legacy / postcss-preset-env ใช้ร่วมกัน)
+- build เฉพาะ legacy chunk (ES5 + core-js polyfill ผ่าน SystemJS) ให้ทุกเบราว์เซอร์ — iOS 11–13 รองรับ `type="module"` แต่ไม่รองรับ syntax ใหม่ ถ้ามี modern bundle เครื่องกลุ่มนี้จะพัง
+- minify ด้วย terser (oxc ของ Vite 8 เปลี่ยน output เป็น ES2015) + plugin `kardex:es5-polyfill-chunk` แปลง polyfill chunk เป็น ES5 อีกรอบ (rolldown ใส่ arrow function)
+- `whatwg-fetch` สำหรับ iOS < 10.3 · Tailwind ปิด opacity plugins ให้สีเป็น hex · หน้าเสือมังกรใช้ CSS ธรรมดา (`dragonTiger.css`) · Lobby ไม่ใช้ `gap`/grid
+- CSS ถูกฝังใน JS (โหมด legacy อย่างเดียว) · backend เปิด gzip: bundle ~530 KB → ~170 KB
 
 - หน้าเว็บเรียก `/api/v1` บน origin เดียวกันเป็นค่าเริ่มต้น — ตั้ง `VITE_API_BASE_URL` เฉพาะตอนที่ API อยู่คนละที่ **ห้ามตั้งเป็น `localhost` ตอน build ไปใช้จริง** (iPad จะยิงไปที่ตัวเอง)
 
@@ -220,8 +227,9 @@ python -m scripts.bench_dt --rounds 1000000 --database-url "postgresql+asyncpg:/
 
 | ระดับ | อุปกรณ์ | หมายเหตุ |
 |---|---|---|
-| ✅ เป้าหมาย | iOS 10.3+ (iPad 4, Air 1, mini 2 ขึ้นไป) · Android 5+ (Chrome) | build ES5 ด้วย `@vitejs/plugin-legacy` |
-| ⚠️ ลองได้ใน M3 | iOS 9 (iPad 2/3, mini 1) · Android 4.4 | เดิมติดเรื่อง HTTPS — ใน LAN เหลือแค่ต้องเติม polyfill `fetch` + ทดสอบ |
+| เป้าหมาย build | iOS 9+ (iPad 2 ขึ้นไป) · Safari 9+ · Android 4.4+ · Chrome 49+ · Firefox 52+ | JS ผ่าน `es-check es5` · polyfill `fetch` + core-js |
+| ทดสอบแล้ว | Chrome (ใช้ bundle ES5 ชุดเดียวกัน) โดยลบ `fetch`, `Promise.finally`, `Array.includes/find`, `Object.entries/assign` ฯลฯ ออกก่อนโหลด → ใช้งานครบทุกฟังก์ชัน | จำลองเครื่องเก่าเท่านั้น |
+| **ยังต้องทดสอบ** | **iPad / Android รุ่นเก่าเครื่องจริง** | เปิด `http://<IP เครื่อง server>:8000/dragon-tiger` ใน WiFi เดียวกัน |
 
 ข้อห้ามใน CSS: ห้ามใช้ `flex gap`, `aspect-ratio`, `inset` · ตั้ง Tailwind ให้สีออกเป็น hex (iOS 10–12.0 ไม่รองรับ `rgb(r g b / a)`)
 
@@ -242,7 +250,7 @@ python -m scripts.bench_dt --rounds 1000000 --database-url "postgresql+asyncpg:/
 - [x] **M0 เตรียมฐาน** — Alembic + migration baseline, โหลด `.env`, แก้ URL Supabase สำหรับ asyncpg, ตาราง `game_tables`, ลบโค้ดเสือมังกร/เดิมพันเดิม, แก้ lint, ลบ Supabase SDK ที่ไม่ได้ใช้, pytest, ย้ายไป Python 3.12, migrate Supabase ถึง `0002` แล้ว (2026-10-18)
 - [x] **M1 Backend** — `dt_rounds` / `dt_block_counts` / `dt_play_events`, stats engine, API, pytest 26 ข้อ (รวมเทสต์สุ่ม 400 คำสั่งเทียบกับการนับตรง), benchmark 1 ล้านรอบ, migrate Supabase ถึง `0003` แล้ว (2026-10-18)
 - [x] **M2 Frontend** — ตาราง, ปุ่มสี, แผงสถิติ, ตัวเลือกช่วงรอบ, polling, `last_rounds` ที่ backend · ทดสอบใน Chrome (iPad landscape/portrait, มือถือ, 2 เครื่องพร้อมกัน, 409) (2026-10-18)
-- [ ] **M3 Legacy** — plugin-legacy + ทดสอบบนเครื่องจริง/BrowserStack
+- [ ] **M3 Legacy** — build ES5 + polyfills เสร็จ, ผ่าน `check:legacy`, ทดสอบจำลองใน Chrome ผ่าน (2026-10-18) · **เหลือ: ทดสอบบน iPad/Android เครื่องจริง**
 - [x] **เปลี่ยนเป็น PostgreSQL บนเครื่องเดียวกัน** — เลิกใช้ Supabase, backend เสิร์ฟหน้าเว็บเอง, จิ้มต่อเนื่องได้ (คิว), จิ้ม 1 ครั้ง = 6 query, benchmark 1 ล้านรอบบน PostgreSQL (2026-10-18)
 - [ ] **M4 ติดตั้งเครื่องลูกค้า** — ชุดติดตั้งตาม OS ของ server, เริ่มเองตอนเปิดเครื่อง, backup อัตโนมัติ, PIN, คู่มือผู้ใช้
 

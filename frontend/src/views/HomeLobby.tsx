@@ -55,7 +55,8 @@ export function HomeLobby() {
           </div>
         ) : null}
 
-        <div className="mt-8 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+        {/* flex-wrap + padding instead of grid/gap: old iPads (iOS < 10.3) have neither */}
+        <div className="-mx-2.5 mt-8 flex flex-wrap">
           {games.map((game) => {
             const isBaccarat = game.code === 'baccarat';
             const isDragonTiger = game.code === 'dragon_tiger';
@@ -68,24 +69,25 @@ export function HomeLobby() {
             };
 
             return (
-              <GameCard
-                key={game.code}
-                title={game.name}
-                subtitle={
-                  isAvailable
-                    ? 'ตรวจสอบไพ่ที่เหลือ • อัตราผลแบบเรียลไทม์'
-                    : 'แผนงานสำหรับโต๊ะเกมในอนาคต'
-                }
-                active={isAvailable}
-                badge={isAvailable ? undefined : 'เร็วๆ นี้'}
-                actionLabel={isAvailable ? 'เข้าตาราง' : undefined}
-                onAction={
-                  isAvailable
-                    ? () => navigate(isDragonTiger ? '/dragon-tiger' : isBaccarat ? '/baccarat' : '/')
-                    : undefined
-                }
-                icon={iconMap[game.code as keyof typeof iconMap] || Gauge}
-              />
+              <div key={game.code} className="mb-5 w-full px-2.5 md:w-1/2 xl:w-1/4">
+                <GameCard
+                  title={game.name}
+                  subtitle={
+                    isAvailable
+                      ? 'ตรวจสอบไพ่ที่เหลือ • อัตราผลแบบเรียลไทม์'
+                      : 'แผนงานสำหรับโต๊ะเกมในอนาคต'
+                  }
+                  active={isAvailable}
+                  badge={isAvailable ? undefined : 'เร็วๆ นี้'}
+                  actionLabel={isAvailable ? 'เข้าตาราง' : undefined}
+                  onAction={
+                    isAvailable
+                      ? () => navigate(isDragonTiger ? '/dragon-tiger' : isBaccarat ? '/baccarat' : '/')
+                      : undefined
+                  }
+                  icon={iconMap[game.code as keyof typeof iconMap] || Gauge}
+                />
+              </div>
             );
           })}
         </div>
