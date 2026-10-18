@@ -2,30 +2,25 @@ from __future__ import annotations
 
 from app.core.database import build_engine, normalize_database_url
 
-SUPABASE_POOLER_URL = (
-    "postgresql+asyncpg://postgres.ref:secret@aws-0-ap-southeast-2.pooler.supabase.com:6543/postgres"
-    "?pgbouncer=true&sslmode=require"
-)
+LOCAL_URL = "postgresql+asyncpg://kardex:secret@localhost:5432/kardex"
 
 
-def test_supabase_params_are_translated_for_asyncpg() -> None:
-    url = normalize_database_url(SUPABASE_POOLER_URL)
+def test_sslmode_is_translated_for_asyncpg() -> None:
+    url = normalize_database_url(f"{LOCAL_URL}?sslmode=require")
 
-    assert "pgbouncer" not in url.query
     assert "sslmode" not in url.query
     assert url.query["ssl"] == "require"
-    assert url.port == 6543
 
 
 def test_asyncpg_receives_only_supported_connect_args() -> None:
-    engine = build_engine(SUPABASE_POOLER_URL)
+    engine = build_engine(f"{LOCAL_URL}?sslmode=require")
     _, kwargs = engine.dialect.create_connect_args(engine.url)
 
     assert kwargs["ssl"] == "require"
-    assert "pgbouncer" not in kwargs
     assert "sslmode" not in kwargs
+    assert kwargs["host"] == "localhost" and kwargs["database"] == "kardex"
 
 
-def test_sqlite_url_is_untouched() -> None:
-    url = normalize_database_url("sqlite+aiosqlite:///./kardex.db")
-    assert str(url) == "sqlite+aiosqlite:///./kardex.db"
+def test_plain_urls_are_untouched() -> None:
+    assert normalize_database_url(LOCAL_URL).render_as_string(hide_password=False) == LOCAL_URL
+    assert str(normalize_database_url("sqlite+aiosqlite:///./kardex.db")) == "sqlite+aiosqlite:///./kardex.db"

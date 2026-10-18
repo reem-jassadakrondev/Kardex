@@ -1,7 +1,7 @@
 import { BarChart3, Dice5, Gauge, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiGet, isApiConfigured } from '../api/client';
+import { apiGet } from '../api/client';
 import { GameCard } from '../components/GameCard';
 import { Navbar } from '../components/Navbar';
 
@@ -26,12 +26,6 @@ export function HomeLobby() {
 
   useEffect(() => {
     const loadGames = async () => {
-      if (!isApiConfigured) {
-        setGames(fallbackGames);
-        setIsLoading(false);
-        return;
-      }
-
       try {
         const data = await apiGet<GameOption[]>('/games');
         if (Array.isArray(data) && data.length > 0) {

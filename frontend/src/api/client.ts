@@ -1,20 +1,44 @@
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL ??
-  (window.location.hostname === 'localhost' ? 'http://localhost:8000/api/v1' : '');
+/**
+ * Same-origin by default: the backend serves this app (on-premise) and `npm run dev` proxies /api.
+ * Set VITE_API_BASE_URL only when the API lives elsewhere (e.g. frontend on Netlify).
+ */
+const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL || '/api/v1';
 
-export const isApiConfigured = !!API_BASE_URL;
+/** Non-2xx response. `body` is the parsed JSON error (FastAPI: `{ detail, ... }`) when available. */
+export class ApiError extends Error {
+  status: number;
+  body: Record<string, unknown> | null;
+
+  constructor(status: number, message: string, body: Record<string, unknown> | null) {
+    super(message);
+    this.status = status;
+    this.body = body;
+  }
+}
+
+type Query = Record<string, string | number | null | undefined>;
+
+function withQuery(path: string, query?: Query): string {
+  if (!query) return path;
+  const parts = Object.keys(query)
+    .filter((key) => query[key] !== null && query[key] !== undefined)
+    .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(String(query[key]))}`);
+  return parts.length ? `${path}?${parts.join('&')}` : path;
+}
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
-  if (!API_BASE_URL) {
-    throw new Error('Backend is not configured. Set VITE_API_BASE_URL in the deployment environment.');
-  }
-
   const response = await fetch(`${API_BASE_URL}${path}`, init);
   const contentType = response.headers.get('content-type') ?? '';
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || `Request failed: ${response.status}`);
+    let body: Record<string, unknown> | null;
+    try {
+      body = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+    } catch {
+      body = null;
+    }
+    throw new ApiError(response.status, text || `Request failed: ${response.status}`, body);
   }
 
   if (contentType.includes('application/json')) {
@@ -33,16 +57,21 @@ async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   }
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  return requestJson<T>(path);
+export async function apiGet<T>(path: string, query?: Query, headers?: Record<string, string>): Promise<T> {
+  return requestJson<T>(withQuery(path, query), headers ? { headers } : undefined);
 }
 
-export async function apiPost<T>(path: string, payload: unknown): Promise<T> {
-  return requestJson<T>(path, {
+export async function apiPost<T>(path: string, payload: unknown, query?: Query, headers?: Record<string, string>): Promise<T> {
+  return requestJson<T>(withQuery(path, query), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...headers,
     },
     body: JSON.stringify(payload),
   });
+}
+
+export async function apiDelete<T>(path: string, query?: Query, headers?: Record<string, string>): Promise<T> {
+  return requestJson<T>(withQuery(path, query), { method: 'DELETE', headers });
 }

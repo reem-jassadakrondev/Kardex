@@ -11,11 +11,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import NoReturn
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, func, or_, select, union_all, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm.attributes import set_committed_value
 
 from app.models.dt import DtBlockCount, DtPlayEvent, DtRound
 from app.models.game_table import GameTable
@@ -47,12 +46,27 @@ class InvalidAction(GridError):
     status_code = 409
 
 
+class TableNotFound(GridError):
+    status_code = 404
+
+    def __init__(self, code: str) -> None:
+        super().__init__(f"Table not found: {code}")
+
+
 @dataclass
 class Cursor:
     """Where the next play will be written."""
 
     round_no: int
     position: int
+
+
+@dataclass
+class WriteOutcome:
+    table: GameTable
+    round: DtRound | None  # the round touched by the write, after the change; None if it was removed
+    removed_round_no: int | None
+    last: DtRound | None  # newest round after the write (feeds cursor/stats without another query)
 
 
 @dataclass
@@ -119,27 +133,35 @@ async def list_rounds(db: AsyncSession, table_id: int, before_round: int | None,
 
 
 # --- writes -----------------------------------------------------------------------------------
+# Each write is one transaction: lock + bump the table version, change the round, adjust counts, log.
 
 
-async def _abort(db: AsyncSession, table: GameTable, error: GridError) -> NoReturn:
-    await db.rollback()
-    await db.refresh(table)
-    raise error
+async def _lock_table(db: AsyncSession, code: str, expected_version: int) -> GameTable:
+    """Bump the version if it still equals `expected_version` and return the table, in one statement.
 
-
-async def _bump_version(db: AsyncSession, table: GameTable, expected: int) -> None:
-    # The conditional UPDATE also row-locks the table until commit, serializing concurrent writers.
-    result = await db.execute(
+    The conditional UPDATE also row-locks the table until commit, serializing concurrent writers.
+    """
+    stmt = (
         update(GameTable)
-        .where(GameTable.id == table.id, GameTable.version == expected)
+        .where(GameTable.code == code, GameTable.version == expected_version)
         .values(version=GameTable.version + 1)
-        .execution_options(synchronize_session=False)
+        .returning(GameTable)
+        .execution_options(synchronize_session=False, populate_existing=True)
     )
-    if result.rowcount != 1:
-        await db.rollback()
-        await db.refresh(table)
-        raise VersionConflict(table.version)
-    set_committed_value(table, "version", expected + 1)
+    table = (await db.execute(stmt)).scalar_one_or_none()
+    if table is not None:
+        return table
+
+    await db.rollback()
+    current = await get_table(db, code)
+    if current is None:
+        raise TableNotFound(code)
+    raise VersionConflict(current.version)
+
+
+async def _abort(db: AsyncSession, error: GridError) -> NoReturn:
+    await db.rollback()
+    raise error
 
 
 async def _adjust_count(db: AsyncSession, table_id: int, round_no: int, position: int, color: str, delta: int) -> None:
@@ -158,11 +180,11 @@ def _log(db: AsyncSession, table_id: int, round_no: int, position: int | None, a
     db.add(DtPlayEvent(table_id=table_id, round_no=round_no, position=position, action=action, value=value, device_id=device_id))
 
 
-async def add_play(db: AsyncSession, table: GameTable, value: str, expected_version: int, device_id: str | None = None) -> DtRound:
+async def add_play(db: AsyncSession, code: str, value: str, expected_version: int, device_id: str | None = None) -> WriteOutcome:
     """Write a color (or SKIP) into the next cell, starting a new round when needed."""
     if value not in COLORS and value != SKIP:
         raise GridError(f"Invalid value: {value}")
-    await _bump_version(db, table, expected_version)
+    table = await _lock_table(db, code, expected_version)
 
     current = await last_round(db, table.id)
     if current is None or current.status != OPEN:
@@ -179,19 +201,16 @@ async def add_play(db: AsyncSession, table: GameTable, value: str, expected_vers
         await _adjust_count(db, table.id, current.round_no, position, value, 1)
     _log(db, table.id, current.round_no, position, "skip" if value == SKIP else "add", value, device_id)
     await db.commit()
-    return current
+    return WriteOutcome(table, current, None, current)
 
 
-async def delete_last(db: AsyncSession, table: GameTable, expected_version: int, device_id: str | None = None) -> tuple[DtRound | None, int]:
-    """Remove the last recorded cell. Reopens a finished round; removes a round that becomes empty.
-
-    Returns (round after the change or None if it was removed, round_no that was touched).
-    """
-    await _bump_version(db, table, expected_version)
+async def delete_last(db: AsyncSession, code: str, expected_version: int, device_id: str | None = None) -> WriteOutcome:
+    """Remove the last recorded cell. Reopens a finished round; removes a round that becomes empty."""
+    table = await _lock_table(db, code, expected_version)
 
     current = await last_round(db, table.id)
     if current is None:
-        await _abort(db, table, InvalidAction("Nothing to delete"))
+        await _abort(db, InvalidAction("Nothing to delete"))
 
     position = len(current.results)
     value = current.results[-1]
@@ -199,40 +218,40 @@ async def delete_last(db: AsyncSession, table: GameTable, expected_version: int,
         await _adjust_count(db, table.id, current.round_no, position, value, -1)
     _log(db, table.id, current.round_no, position, "delete", value, device_id)
 
-    round_no = current.round_no
     current.results = current.results[:-1]
     if current.results:
         current.status = OPEN
         current.updated_at = datetime.now(timezone.utc)
         await db.commit()
-        return current, round_no
+        return WriteOutcome(table, current, None, current)
 
+    round_no = current.round_no
     await db.delete(current)
     await db.commit()
-    return None, round_no
+    return WriteOutcome(table, None, round_no, await last_round(db, table.id))
 
 
 async def _require_open_round(db: AsyncSession, table: GameTable) -> DtRound:
     current = await last_round(db, table.id)
     if current is None or current.status != OPEN:
-        await _abort(db, table, InvalidAction("No round in progress"))
+        await _abort(db, InvalidAction("No round in progress"))
     return current
 
 
-async def end_round(db: AsyncSession, table: GameTable, expected_version: int, device_id: str | None = None) -> DtRound:
+async def end_round(db: AsyncSession, code: str, expected_version: int, device_id: str | None = None) -> WriteOutcome:
     """Close the current round before all plays were recorded; its filled cells still count."""
-    await _bump_version(db, table, expected_version)
+    table = await _lock_table(db, code, expected_version)
     current = await _require_open_round(db, table)
     current.status = ENDED_EARLY
     current.updated_at = datetime.now(timezone.utc)
     _log(db, table.id, current.round_no, None, "end_round", None, device_id)
     await db.commit()
-    return current
+    return WriteOutcome(table, current, None, current)
 
 
-async def discard_round(db: AsyncSession, table: GameTable, expected_version: int, device_id: str | None = None) -> int:
-    """Delete the current round entirely and remove it from the stats. Returns its round_no."""
-    await _bump_version(db, table, expected_version)
+async def discard_round(db: AsyncSession, code: str, expected_version: int, device_id: str | None = None) -> WriteOutcome:
+    """Delete the current round entirely and remove it from the stats."""
+    table = await _lock_table(db, code, expected_version)
     current = await _require_open_round(db, table)
 
     for position, value in enumerate(current.results, start=1):
@@ -243,20 +262,20 @@ async def discard_round(db: AsyncSession, table: GameTable, expected_version: in
     round_no = current.round_no
     await db.delete(current)
     await db.commit()
-    return round_no
+    return WriteOutcome(table, None, round_no, await last_round(db, table.id))
 
 
 # --- stats ------------------------------------------------------------------------------------
 
 
 async def column_counts(db: AsyncSession, table_id: int, position: int, lo: int, hi: int) -> Counter[str]:
-    """Color counts at `position` over rounds [lo, hi], using block aggregates plus edge scans."""
-    counts: Counter[str] = Counter()
+    """Color counts at `position` over rounds [lo, hi]: block aggregates plus edge scans, in one query."""
     blocks, edges = split_range(lo, hi)
+    parts = []
 
     if blocks is not None:
-        stmt = (
-            select(DtBlockCount.color, func.sum(DtBlockCount.count))
+        parts.append(
+            select(DtBlockCount.color.label("value"), func.sum(DtBlockCount.count).label("total"))
             .where(
                 DtBlockCount.table_id == table_id,
                 DtBlockCount.position == position,
@@ -264,29 +283,38 @@ async def column_counts(db: AsyncSession, table_id: int, position: int, lo: int,
             )
             .group_by(DtBlockCount.color)
         )
-        for color, total in (await db.execute(stmt)).all():
-            counts[color] += int(total or 0)
-
-    cell = func.substr(DtRound.results, position, 1)
-    for edge_lo, edge_hi in edges:
-        stmt = (
-            select(cell, func.count())
-            .where(DtRound.table_id == table_id, DtRound.round_no.between(edge_lo, edge_hi))
+    if edges:
+        cell = func.substr(DtRound.results, position, 1)
+        parts.append(
+            select(cell.label("value"), func.count().label("total"))
+            .where(DtRound.table_id == table_id, or_(*(DtRound.round_no.between(a, b) for a, b in edges)))
             .group_by(cell)
         )
-        for value, total in (await db.execute(stmt)).all():
-            if value in COLORS:
-                counts[value] += int(total)
 
+    stmt = parts[0] if len(parts) == 1 else union_all(*parts)
+    counts: Counter[str] = Counter()
+    for value, total in (await db.execute(stmt)).all():
+        if value in COLORS:
+            counts[value] += int(total or 0)
     return counts
 
 
 async def compute_stats(
-    db: AsyncSession, table: GameTable, last: DtRound | None, from_round: int | None, to_round: int | None
+    db: AsyncSession,
+    table: GameTable,
+    last: DtRound | None,
+    from_round: int | None,
+    to_round: int | None,
+    last_rounds: int | None = None,
 ) -> Stats:
-    """Hit rates for the next cell: by column over the range, else by the current row, else none."""
+    """Hit rates for the next cell: by column over the range, else by the current row, else none.
+
+    The range is [from_round, to_round], or the newest `last_rounds` rounds when that is given.
+    """
     cursor = cursor_of(last)
     max_round = last.round_no if last else 0
+    if last_rounds is not None:
+        from_round, to_round = max_round - last_rounds + 1, None
     lo = max(1, from_round or 1)
     hi = min(to_round, max_round) if to_round is not None else max_round
 

@@ -1,6 +1,8 @@
-"""Dragon Tiger color grid API. All endpoints accept from_round/to_round to scope the stats."""
+"""Dragon Tiger color grid API. All endpoints accept from_round/to_round or last_rounds to scope the stats."""
 
 from __future__ import annotations
+
+from collections.abc import Awaitable
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -31,11 +33,15 @@ class StatsRange:
         self,
         from_round: int | None = Query(None, ge=1),
         to_round: int | None = Query(None, ge=1),
+        last_rounds: int | None = Query(None, ge=1, description="Use the newest N rounds instead of from/to"),
     ) -> None:
         if from_round is not None and to_round is not None and from_round > to_round:
             raise HTTPException(status_code=422, detail="from_round must be <= to_round")
+        if last_rounds is not None and (from_round is not None or to_round is not None):
+            raise HTTPException(status_code=422, detail="Use either last_rounds or from_round/to_round")
         self.from_round = from_round
         self.to_round = to_round
+        self.last_rounds = last_rounds
 
 
 async def load_table(code: str, db: AsyncSession = Depends(get_db)) -> GameTable:
@@ -49,10 +55,12 @@ def round_out(row: DtRound) -> RoundOut:
     return RoundOut(round_no=row.round_no, results=row.results, status=row.status)
 
 
-async def build_state(db: AsyncSession, table: GameTable, scope: StatsRange) -> dict:
-    last = await dt_grid.last_round(db, table.id)
+async def build_state(db: AsyncSession, table: GameTable, scope: StatsRange, last: DtRound | None = None, known_last: bool = False) -> dict:
+    """Table state + stats. Pass `known_last=True` when the caller already has the newest round."""
+    if not known_last:
+        last = await dt_grid.last_round(db, table.id)
     cursor = dt_grid.cursor_of(last)
-    stats = await dt_grid.compute_stats(db, table, last, scope.from_round, scope.to_round)
+    stats = await dt_grid.compute_stats(db, table, last, scope.from_round, scope.to_round, scope.last_rounds)
     return {
         "table": TableInfo(code=table.code, name=table.name, plays_per_round=table.plays_per_round),
         "version": table.version,
@@ -78,6 +86,18 @@ def grid_error(error: dt_grid.GridError) -> JSONResponse:
     return JSONResponse(status_code=error.status_code, content=content)
 
 
+async def write_response(db: AsyncSession, scope: StatsRange, write: Awaitable[dt_grid.WriteOutcome]):
+    try:
+        outcome = await write
+    except dt_grid.GridError as error:
+        return grid_error(error)
+    return {
+        **await build_state(db, outcome.table, scope, outcome.last, known_last=True),
+        "round": round_out(outcome.round) if outcome.round else None,
+        "removed_round_no": outcome.removed_round_no,
+    }
+
+
 @router.get("/{code}", response_model=TableState)
 async def get_state(
     table: GameTable = Depends(load_table), scope: StatsRange = Depends(), db: AsyncSession = Depends(get_db)
@@ -100,65 +120,48 @@ async def get_grid(
     )
 
 
+# Writes take the table code directly: the version-check UPDATE also loads the table (one round-trip).
+
+
 @router.post("/{code}/plays", response_model=WriteResult)
 async def add_play(
+    code: str,
     body: PlayIn,
-    table: GameTable = Depends(load_table),
     scope: StatsRange = Depends(),
     db: AsyncSession = Depends(get_db),
     x_device_id: str | None = Header(None, max_length=64),
 ):
-    try:
-        row = await dt_grid.add_play(db, table, body.value, body.version, x_device_id)
-    except dt_grid.GridError as error:
-        return grid_error(error)
-    return {**await build_state(db, table, scope), "round": round_out(row)}
+    return await write_response(db, scope, dt_grid.add_play(db, code, body.value, body.version, x_device_id))
 
 
 @router.delete("/{code}/plays/last", response_model=WriteResult)
 async def delete_last(
+    code: str,
     version: int = Query(..., ge=0),
-    table: GameTable = Depends(load_table),
     scope: StatsRange = Depends(),
     db: AsyncSession = Depends(get_db),
     x_device_id: str | None = Header(None, max_length=64),
 ):
-    try:
-        row, round_no = await dt_grid.delete_last(db, table, version, x_device_id)
-    except dt_grid.GridError as error:
-        return grid_error(error)
-    return {
-        **await build_state(db, table, scope),
-        "round": round_out(row) if row else None,
-        "removed_round_no": None if row else round_no,
-    }
+    return await write_response(db, scope, dt_grid.delete_last(db, code, version, x_device_id))
 
 
 @router.post("/{code}/rounds/current/end", response_model=WriteResult)
 async def end_round(
+    code: str,
     body: VersionIn,
-    table: GameTable = Depends(load_table),
     scope: StatsRange = Depends(),
     db: AsyncSession = Depends(get_db),
     x_device_id: str | None = Header(None, max_length=64),
 ):
-    try:
-        row = await dt_grid.end_round(db, table, body.version, x_device_id)
-    except dt_grid.GridError as error:
-        return grid_error(error)
-    return {**await build_state(db, table, scope), "round": round_out(row)}
+    return await write_response(db, scope, dt_grid.end_round(db, code, body.version, x_device_id))
 
 
 @router.delete("/{code}/rounds/current", response_model=WriteResult)
 async def discard_round(
+    code: str,
     version: int = Query(..., ge=0),
-    table: GameTable = Depends(load_table),
     scope: StatsRange = Depends(),
     db: AsyncSession = Depends(get_db),
     x_device_id: str | None = Header(None, max_length=64),
 ):
-    try:
-        round_no = await dt_grid.discard_round(db, table, version, x_device_id)
-    except dt_grid.GridError as error:
-        return grid_error(error)
-    return {**await build_state(db, table, scope), "round": None, "removed_round_no": round_no}
+    return await write_response(db, scope, dt_grid.discard_round(db, code, version, x_device_id))

@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from fastapi.testclient import TestClient
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.core.database import get_db
@@ -29,8 +29,12 @@ def db_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def client(db_path: Path) -> Iterator[TestClient]:
-    engine = create_async_engine(f"sqlite+aiosqlite:///{db_path}", poolclass=NullPool)
+def engine(db_path: Path) -> AsyncEngine:
+    return create_async_engine(f"sqlite+aiosqlite:///{db_path}", poolclass=NullPool)
+
+
+@pytest.fixture
+def client(engine: AsyncEngine) -> Iterator[TestClient]:
     sessions = async_sessionmaker(bind=engine, class_=AsyncSession, expire_on_commit=False)
 
     async def override_get_db() -> AsyncGenerator[AsyncSession, None]:

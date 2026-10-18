@@ -1,6 +1,8 @@
 # Kardex
 
-เว็บแอปเก็บสถิติโต๊ะเกมไพ่ ประกอบด้วย **Frontend (React + Vite + TypeScript + Tailwind)** และ **Backend (FastAPI + SQLAlchemy async + Alembic)** ฐานข้อมูลใช้ **Supabase Postgres** (production) หรือ **SQLite** (local)
+เว็บแอปเก็บสถิติโต๊ะเกมไพ่ ประกอบด้วย **Frontend (React + Vite + TypeScript + Tailwind)** และ **Backend (FastAPI + SQLAlchemy async + Alembic)** ฐานข้อมูลใช้ **PostgreSQL ติดตั้งบนเครื่องเดียวกับ backend** (ทั้งเครื่องพัฒนาและเครื่อง server ของลูกค้า)
+
+> **ตัดสินใจ 2026-10-18:** เลิกใช้ Supabase — ทดสอบจริงแล้ว backend ที่ไทยต่อ DB ที่ Sydney ทำให้จิ้ม 1 ครั้งใช้ 4–10 วินาที ส่วน backend + PostgreSQL เครื่องเดียวกันใช้ ~3 ms จึงติดตั้งทั้งระบบบนเครื่องของลูกค้า (on-premise)
 
 > **งานปัจจุบัน:** เฟส 1 จากทั้งหมด 4 เฟส — สร้างโมดูลเสือมังกรใหม่เป็น "ตารางสี + อัตราการออก" (ดู [แผนเฟส 1](#แผนเฟส-1--ตารางสีเสือมังกร)) ลูกค้าจะตัดสินใจต่อสัญญาเฟส 2–4 จากผลงานเฟสนี้
 
@@ -8,7 +10,10 @@
 
 | โฟลเดอร์ | บทบาท |
 |----------|--------|
-| `frontend/` | UI, routing, เรียก REST API (deploy บน Netlify ผ่าน `netlify.toml`) |
+| `frontend/` | UI, routing, เรียก REST API — build แล้ว backend เสิร์ฟให้ (`netlify.toml` ยังอยู่เผื่อแยก host frontend) |
+| `frontend/src/views/DragonTigerRoom.tsx` + `dragonTiger.css` | หน้าตารางสี (CSS ธรรมดา รองรับเบราว์เซอร์เก่า) |
+| `frontend/src/hooks/useDtGrid.ts` | state ของตารางสี: โหลด, polling, เขียนทีละคำสั่ง + จัดการ 409 |
+| `frontend/src/components/dtGrid/` | ตาราง, ปุ่มบันทึก, แผงอัตราการออก, ตัวเลือกช่วงรอบ |
 | `backend/app/` | API (`api/v1`), models, services |
 | `backend/alembic/` | migration ของฐานข้อมูล |
 | `backend/tests/` | pytest |
@@ -19,7 +24,7 @@
 |---------|------|--------|
 | `/` | Home Lobby — รายการเกมจาก API | ใช้งานได้ |
 | `/baccarat` | บาคาร่า — ติดตาม shoe, Big Road / Bead Plate, โต๊ะเดิมพันจำลอง | ใช้งานได้ (ไม่อยู่ในขอบเขตเฟส 1) |
-| `/dragon-tiger` | เสือมังกร — ตารางสี 60 คอลัมน์ | กำลังพัฒนา (ตอนนี้เป็นหน้า placeholder) |
+| `/dragon-tiger` | เสือมังกร — ตารางสี 60 คอลัมน์ + อัตราการออก (โต๊ะ `dt-1`) | ใช้งานได้ (เฟส 1) |
 
 ## API
 
@@ -39,7 +44,7 @@
 | DELETE | `/api/v1/tables/{code}/rounds/current?version=n` | ทิ้งรอบปัจจุบัน |
 
 ตารางสี (`/tables/...`):
-- ทุก endpoint รับ `?from_round=&to_round=` เพื่อกำหนดช่วงที่ใช้คำนวณสถิติ (ไม่ใส่ = ทั้งหมด)
+- ทุก endpoint รับ `?from_round=&to_round=` หรือ `?last_rounds=N` (N รอบล่าสุด คิดที่ server) เพื่อกำหนดช่วงที่ใช้คำนวณสถิติ (ไม่ใส่ = ทั้งหมด)
 - คำสั่งเขียนตอบสถานะ + สถิติของช่องถัดไป + รอบที่เปลี่ยน (`round`, หรือ `removed_round_no` ถ้ารอบถูกลบ)
 - `version` ไม่ตรงกับ server → **409** พร้อม `current_version` (มีเครื่องอื่นแก้ไปแล้ว ให้โหลดใหม่)
 - ส่ง header `X-Device-Id` เพื่อบันทึกว่าเครื่องไหนแก้ (ไม่บังคับ)
@@ -52,7 +57,7 @@
 cd backend
 python3.12 -m venv venv && source venv/bin/activate  # Windows: venv\Scripts\activate
 pip install -r requirements-dev.txt
-cp .env.example .env        # ใส่รหัสผ่าน Supabase หรือลบ DATABASE_URL/DIRECT_URL เพื่อใช้ SQLite
+cp .env.example .env        # ใส่ DATABASE_URL ของ PostgreSQL (ดู "ติดตั้ง PostgreSQL" ด้านล่าง)
 alembic upgrade head        # ต้องรันทุกครั้งที่มี migration ใหม่
 uvicorn app.main:app --reload
 pytest                      # รันเทสต์ (ใช้ SQLite ชั่วคราว ไม่แตะฐานข้อมูลจริง)
@@ -60,7 +65,7 @@ python -m scripts.bench_dt --rounds 1000000   # วัดความเร็�
 ```
 
 - backend โหลด `backend/.env` อัตโนมัติ (env var ของเครื่อง/โฮสต์มีลำดับสูงกว่า)
-- ไม่ตั้ง `DATABASE_URL` → ใช้ SQLite ที่ `backend/kardex.db`
+- ไม่ตั้ง `DATABASE_URL` → ใช้ SQLite ที่ `backend/kardex.db` (ไว้สำหรับเทสต์/ลองเร็วๆ เท่านั้น ใช้งานจริงต้องเป็น PostgreSQL)
 - `SQL_ECHO=true` เพื่อ log SQL ทุกคำสั่ง
 - เพิ่ม/แก้ model แล้วต้องสร้าง migration: `alembic revision --autogenerate -m "..."` แล้วตรวจไฟล์ก่อน commit (`tests/test_migrations.py` จะ fail ถ้า model กับ migration ไม่ตรงกัน)
 - ใช้ **Python 3.12** (macOS: `brew install python@3.12`, Windows: `install_prereqs.bat`)
@@ -69,21 +74,51 @@ python -m scripts.bench_dt --rounds 1000000   # วัดความเร็�
 
 ```bash
 cd frontend
-cp .env.example .env        # VITE_API_BASE_URL
 npm install
-npm run dev
+npm run dev                 # proxy /api → localhost:8000 (เปลี่ยนได้ด้วย KARDEX_API_PROXY)
 npm run lint && npm run build
 ```
+
+- หน้าเว็บเรียก `/api/v1` บน origin เดียวกันเป็นค่าเริ่มต้น — ตั้ง `VITE_API_BASE_URL` เฉพาะตอนที่ API อยู่คนละที่ **ห้ามตั้งเป็น `localhost` ตอน build ไปใช้จริง** (iPad จะยิงไปที่ตัวเอง)
+
+### ติดตั้ง PostgreSQL
+
+1. ติดตั้ง PostgreSQL (เครื่องพัฒนาใช้ 18 ของ EDB, เครื่องลูกค้าใช้ 15 ขึ้นไป)
+2. ในฐานะ user `postgres` (pgAdmin → Query Tool หรือ `psql`) สร้าง user/database สำหรับแอป:
+   ```sql
+   CREATE ROLE kardex LOGIN PASSWORD '<รหัส>';
+   CREATE DATABASE kardex OWNER kardex;   -- ถ้ามี database อยู่แล้ว: ALTER DATABASE kardex OWNER TO kardex;
+   ```
+3. `backend/.env`: `DATABASE_URL="postgresql+asyncpg://kardex:<รหัส>@localhost:5432/kardex"` แล้ว `alembic upgrade head`
+
+เครื่องพัฒนาตอนนี้ใช้ `kardex` / `kardex-local` (รหัสสำหรับทดสอบเท่านั้น — เครื่องลูกค้าต้องตั้งรหัสใหม่)
+
+### ติดตั้งแบบเครื่องเดียว (on-premise — แนะนำ)
+
+backend เสิร์ฟหน้าเว็บที่ build แล้ว (`frontend/dist`) เอง → backend + PostgreSQL บนเครื่องเดียว, ไม่ต้องใช้ cloud
+
+```bash
+cd frontend && npm install && npm run build
+cd ../backend
+# backend/.env: DATABASE_URL="postgresql+asyncpg://kardex:<รหัส>@localhost:5432/kardex"
+alembic upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+- iPad/มือถือใน WiFi เดียวกันเปิด `http://<IP ของเครื่อง server>:8000/dragon-tiger` — ใช้ `http://` ใน LAN ได้ จึงไม่ติดปัญหาใบรับรอง HTTPS ของอุปกรณ์รุ่นเก่า
+- `FRONTEND_DIST` เปลี่ยนตำแหน่งโฟลเดอร์ build ได้ (ไม่มี `index.html` → ไม่เสิร์ฟหน้าเว็บ)
+- ต้องตั้ง backup อัตโนมัติ (`pg_dump`) ไปเครื่อง/ที่เก็บอื่น — ยังไม่ได้ทำ
 
 ### Windows demo
 
 `install_prereqs.bat` → `setup_demo.bat` → `start_demo.bat` (รัน `alembic upgrade head` ให้อัตโนมัติ) → `stop_demo.bat`
 
-### Supabase
+ต้องติดตั้ง PostgreSQL และสร้าง user `kardex` / `kardex-local` ตามหัวข้อด้านบนก่อน (`backend/.env.demo` ชี้ไปที่นั่น) — สคริปต์ยังไม่ติดตั้ง PostgreSQL ให้ จะทำเป็นชุดติดตั้งเครื่องลูกค้าเมื่อรู้ OS ของ server
 
-- **Runtime** ใช้ transaction pooler (port 6543) ใน `DATABASE_URL`, **migration** ใช้ session pooler (port 5432) ใน `DIRECT_URL` — วาง connection string จาก dashboard ได้เลย backend แปลง `pgbouncer`/`sslmode` ให้ asyncpg เอง
-- แพ็กเกจ Free จะ **pause อัตโนมัติเมื่อไม่มีการใช้งาน 7 วัน** → กด *Resume project* ใน dashboard ก่อนใช้งาน (production ควรใช้ Pro)
-- ฐานข้อมูลที่เคยสร้างตารางด้วย `create_all` ก่อนมี Alembic: รัน `alembic stamp 0001` ครั้งเดียว แล้วค่อย `alembic upgrade head`
+### บทเรียนเรื่อง latency (จากการทดสอบ Supabase ก่อนเลิกใช้)
+
+- ทุก query เสีย 1–3 network round-trip → backend **ต้อง** อยู่ใกล้ DB (เครื่องเดียวกันดีที่สุด) · ไทย → Sydney RTT ~0.28 วิ ทำให้จิ้ม 1 ครั้ง 4–10 วิ
+- connection pooler แบบ transaction (pgbouncer) ทำให้ใช้ prepared statement cache ไม่ได้ → query ละ ~3 round-trip · ต่อ PostgreSQL ตรงๆ ใช้ cache ได้
 
 ## ฐานข้อมูล (ปัจจุบัน)
 
@@ -140,7 +175,7 @@ dt_play_events   log ทุกการกด (add / skip / delete / end_round /
 
 - `version` อยู่ระดับโต๊ะ (ไม่ใช่ต่อรอบ) เพราะ "ลบตัวสุดท้าย" ย้อนข้ามรอบได้ · UPDATE แบบมีเงื่อนไขล็อกแถวโต๊ะไว้จน commit จึงเขียนพร้อมกันไม่ได้
 - ตัวนับเพี้ยน → `dt_grid.verify_counts()` ตรวจ, `dt_grid.rebuild_counts()` คำนวณใหม่จาก `dt_rounds`
-- เก็บผลทั้งรอบเป็นสตริง: 1 ล้านรอบ ≈ 134 MB บน SQLite (วัดจริง) (ถ้าแยก 1 แถวต่อตาจะเป็น 60 ล้านแถว ≈ 3 GB+ เกินโควตา Supabase Free 500 MB)
+- เก็บผลทั้งรอบเป็นสตริง: 1 ล้านรอบ ≈ 134 MB บน SQLite (วัดจริง) / 193 MB บน PostgreSQL (ถ้าแยก 1 แถวต่อตาจะเป็น 60 ล้านแถว ≈ 3 GB+)
 - **คำนวณช่วงรอบ** = รวม `dt_block_counts` ของบล็อกที่อยู่ในช่วงเต็มๆ + สแกนเศษหัว/ท้ายไม่เกิน 1,998 รอบ → ช่วง 500,000–999,999 อ่านแค่ 500 บล็อก ไม่ต้องดึงข้อมูลดิบ
 - "ทิ้งรอบ" ทำได้เฉพาะรอบปัจจุบัน (รอบสุดท้าย) จึงลบจริงได้โดย `round_no` ยังต่อเนื่อง
 - "ลบตัวสุดท้าย" เมื่อรอบปัจจุบันว่าง → ย้อนไปเปิดรอบก่อนหน้า (มีหน้ายืนยัน)
@@ -150,29 +185,43 @@ dt_play_events   log ทุกการกด (add / skip / delete / end_round /
 
 ดูตาราง [API](#api) ด้านบน · คำสั่งเขียนตอบสถิติกลับมาด้วย (1 จิ้ม = 1 request) · เครื่องอื่น polling `GET /tables/{code}` ทุก 3–5 วินาที แล้วโหลด grid ใหม่เมื่อ `version` เปลี่ยน
 
-### ผลวัดความเร็ว (M1, `scripts/bench_dt.py`, 1 ล้านรอบ, SQLite บน Mac)
+### ผลวัดความเร็ว (`scripts/bench_dt.py`, 1 ล้านรอบ, บน Mac)
 
-| คำสั่ง | เวลา |
-|---|---|
-| สถิติจากทุกรอบ | 2.6 ms |
-| สถิติรอบ 500,000–999,999 | 1.8 ms |
-| สถิติ 1,000 รอบล่าสุด | 0.4 ms |
-| บันทึก 1 ช่อง / ลบตัวสุดท้าย | ~2 ms |
+| คำสั่ง | SQLite | PostgreSQL 18 ในเครื่อง |
+|---|---|---|
+| สถิติจากทุกรอบ | 2.6 ms | 1.5 ms |
+| สถิติรอบ 500,000–999,999 | 1.8 ms | 1.2 ms |
+| สถิติ 1,000 รอบล่าสุด | 0.4 ms | 0.4 ms |
+| บันทึก 1 ช่อง / ลบตัวสุดท้าย | ~2 ms | ~2 ms |
+| ขนาดข้อมูล | 134 MB | 193 MB |
 
-บน Supabase จะช้ากว่านี้ตาม network latency (Sydney) แต่จำนวน query ต่อคำสั่งคงที่ ไม่ขึ้นกับจำนวนรอบ
+ผ่าน HTTP จริง (backend + PostgreSQL เครื่องเดียวกัน): จิ้ม 1 ครั้ง median 3.1 ms (เทียบ Supabase Sydney จากไทย: 4–10 วินาที)
 
-### หน้าจอ
+```bash
+python -m scripts.bench_dt --rounds 1000000 --database-url "postgresql+asyncpg://kardex:<รหัส>@localhost:5432/kardex"
+```
+(PostgreSQL: สร้างโต๊ะชั่วคราว `bench-…` แล้วลบทิ้งหลังวัด ไม่แตะข้อมูลอื่น)
 
-ตัวเลือกช่วงรอบ → ตาราง 60 คอลัมน์ (เลื่อนแนวนอน, เลื่อนไปช่องปัจจุบันอัตโนมัติ, แสดง 50 รอบล่าสุด) → แผงอัตราการออก → ปุ่มสีใหญ่ 5 ปุ่ม + ลบตัวสุดท้าย / ข้ามช่อง / จบรอบ / ทิ้งรอบ
-จิ้มแล้วแสดงสีจางทันที → server ยืนยันแล้วเป็นสีเต็ม → ถ้าล้มเหลวคืนค่าเดิม + แจ้งเตือน · ล็อกปุ่มระหว่างรอผลกันจิ้มซ้ำ
+### หน้าจอ (ทำแล้วใน M2)
+
+ตัวเลือกช่วงรอบ (ทุกรอบ / 100 / 1,000 / 10,000 รอบล่าสุด / กำหนดช่วง — จำไว้ต่อเครื่อง) → ตาราง 60 คอลัมน์ (หัวคอลัมน์/เลขรอบติดขอบ, เลื่อนไปช่องปัจจุบันอัตโนมัติ, แสดง 50 รอบล่าสุด + ปุ่มโหลดรอบก่อนหน้า) → ปุ่มสีใหญ่ 5 ปุ่ม + ลบตัวสุดท้าย / ข้ามช่อง / จบรอบ / ทิ้งรอบ → แผงอัตราการออก (โหมด + n + ช่วงรอบ)
+
+- **จิ้มต่อเนื่องได้ไม่ต้องรอ**: แต่ละจิ้มเข้าคิว แสดงเป็นสีจางทันที แล้วส่งไป server ทีละรายการตามลำดับ → เป็นสีเต็มเมื่อบันทึกแล้ว (สถานะมุมขวาบนบอกจำนวนที่ค้าง)
+- ลบตัวสุดท้ายระหว่างที่ยังค้างในคิว → ดึงออกจากคิวเลย ไม่ส่งไป server · จบรอบ/ทิ้งรอบกดได้เมื่อคิวว่าง
+- ถ้าบันทึกรายการใดไม่สำเร็จ → ยกเลิกรายการที่เหลือในคิวและแจ้งจำนวน ให้ผู้ใช้ตรวจสอบแล้วบันทึกใหม่
+- จิ้ม 1 ครั้ง = 6 query (ล็อกไว้ด้วยเทสต์ `test_tap_uses_few_queries`)
+- ต้องยืนยันก่อน: จบรอบ, ทิ้งรอบ, ลบตัวสุดท้ายที่ย้อนเข้าไปในรอบที่จบแล้ว
+- เครื่องอื่นแก้ข้อมูล → หน้าอัปเดตเองภายใน ~4 วินาที · ถ้าบันทึกชนกัน (409) โหลดข้อมูลล่าสุดและแจ้งให้ตรวจสอบ
+- แป้นพิมพ์: R B Y K G = บันทึกสี · `-` = ข้ามช่อง · Backspace = ลบตัวสุดท้าย · Esc = ยกเลิกการยืนยัน
 
 ### อุปกรณ์ที่รองรับ (ต้องยืนยันด้วยการทดสอบใน M3)
 
+ติดตั้งใน LAN แล้วเปิดผ่าน `http://` → **ไม่มีปัญหาใบรับรอง HTTPS ของเครื่องเก่าอีกต่อไป** เหลือแค่เรื่อง JavaScript/CSS
+
 | ระดับ | อุปกรณ์ | หมายเหตุ |
 |---|---|---|
-| ✅ รองรับ | iOS 10.3+ (iPad 4, Air 1, mini 2 ขึ้นไป) · Android 7.1.1+ | build ES5 ด้วย `@vitejs/plugin-legacy` |
-| ⚠️ มีเงื่อนไข | Android 5.0–7.0 | ไม่มี root cert ของ Let's Encrypt (Netlify) → ใช้ Firefox หรือย้ายไปใช้ cert จาก CA ที่ root เก่ากว่า |
-| ❌ ไม่รองรับ | iOS 9 (iPad 2/3, mini 1) · Android 4.x | ต่อ HTTPS ไม่ได้, ไม่มี `fetch` |
+| ✅ เป้าหมาย | iOS 10.3+ (iPad 4, Air 1, mini 2 ขึ้นไป) · Android 5+ (Chrome) | build ES5 ด้วย `@vitejs/plugin-legacy` |
+| ⚠️ ลองได้ใน M3 | iOS 9 (iPad 2/3, mini 1) · Android 4.4 | เดิมติดเรื่อง HTTPS — ใน LAN เหลือแค่ต้องเติม polyfill `fetch` + ทดสอบ |
 
 ข้อห้ามใน CSS: ห้ามใช้ `flex gap`, `aspect-ratio`, `inset` · ตั้ง Tailwind ให้สีออกเป็น hex (iOS 10–12.0 ไม่รองรับ `rgb(r g b / a)`)
 
@@ -181,7 +230,9 @@ dt_play_events   log ทุกการกด (add / skip / delete / end_round /
 | ความเสี่ยง | ทางแก้ |
 |---|---|
 | ไม่มีล็อกอิน ใครมี URL ก็เขียนได้ | PIN ของโต๊ะ |
-| Supabase Free pause เมื่อไม่มีการใช้งาน 7 วัน / Render Free cold start 30–60 วิ | production ใช้แพ็กเกจเสียเงิน |
+| เครื่อง server เสีย / disk พัง → ข้อมูลหาย (ไม่มี cloud แล้ว) | backup อัตโนมัติ (`pg_dump`) ไปที่เก็บอื่นทุกวัน + ทดสอบกู้คืน |
+| server ปิด/รีสตาร์ท ระหว่างเล่น | ตั้ง PostgreSQL + backend ให้เริ่มเองตอนเปิดเครื่อง |
+| ต้องอัปเดต/แก้ปัญหาที่เครื่องลูกค้า | ตกลงช่องทาง remote (remote desktop / VPN) หรือชุดอัปเดตที่ลูกค้ากดเอง |
 | เน็ตหลุดระหว่างบันทึก | retry + แจ้งเตือนชัดเจน |
 | ตัวนับสรุปเพี้ยนจากข้อมูลจริง | endpoint คำนวณใหม่จากข้อมูลดิบ + เทสต์ |
 | เฟส 2–4 ยังไม่ชัด | ออกแบบให้ต่อยอดได้ (`game_tables`, log) แต่ไม่ทำฟีเจอร์เผื่อ |
@@ -190,9 +241,10 @@ dt_play_events   log ทุกการกด (add / skip / delete / end_round /
 
 - [x] **M0 เตรียมฐาน** — Alembic + migration baseline, โหลด `.env`, แก้ URL Supabase สำหรับ asyncpg, ตาราง `game_tables`, ลบโค้ดเสือมังกร/เดิมพันเดิม, แก้ lint, ลบ Supabase SDK ที่ไม่ได้ใช้, pytest, ย้ายไป Python 3.12, migrate Supabase ถึง `0002` แล้ว (2026-10-18)
 - [x] **M1 Backend** — `dt_rounds` / `dt_block_counts` / `dt_play_events`, stats engine, API, pytest 26 ข้อ (รวมเทสต์สุ่ม 400 คำสั่งเทียบกับการนับตรง), benchmark 1 ล้านรอบ, migrate Supabase ถึง `0003` แล้ว (2026-10-18)
-- [ ] **M2 Frontend** — ตาราง, ปุ่มสี, แผงสถิติ, ตัวเลือกช่วงรอบ, polling
+- [x] **M2 Frontend** — ตาราง, ปุ่มสี, แผงสถิติ, ตัวเลือกช่วงรอบ, polling, `last_rounds` ที่ backend · ทดสอบใน Chrome (iPad landscape/portrait, มือถือ, 2 เครื่องพร้อมกัน, 409) (2026-10-18)
 - [ ] **M3 Legacy** — plugin-legacy + ทดสอบบนเครื่องจริง/BrowserStack
-- [ ] **M4 Deploy** — PIN, hosting, คู่มือผู้ใช้
+- [x] **เปลี่ยนเป็น PostgreSQL บนเครื่องเดียวกัน** — เลิกใช้ Supabase, backend เสิร์ฟหน้าเว็บเอง, จิ้มต่อเนื่องได้ (คิว), จิ้ม 1 ครั้ง = 6 query, benchmark 1 ล้านรอบบน PostgreSQL (2026-10-18)
+- [ ] **M4 ติดตั้งเครื่องลูกค้า** — ชุดติดตั้งตาม OS ของ server, เริ่มเองตอนเปิดเครื่อง, backup อัตโนมัติ, PIN, คู่มือผู้ใช้
 
 ### ปัญหาที่รู้แล้วนอกขอบเขตเฟส 1 (บาคาร่า)
 

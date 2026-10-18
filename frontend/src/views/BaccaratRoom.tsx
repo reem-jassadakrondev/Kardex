@@ -1,7 +1,7 @@
 import { Activity, ArrowLeft, BarChart3, Coins, RefreshCcw, Save, ShieldCheck, TrendingUp, WalletCards } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiGet, apiPost, isApiConfigured } from '../api/client';
+import { apiGet, apiPost } from '../api/client';
 import { CardMatrix } from '../components/CardMatrix';
 import { PlayingCard } from '../components/PlayingCard';
 import { ProbabilityBar } from '../components/ProbabilityBar';
@@ -46,13 +46,9 @@ export function BaccaratRoom() {
   const [shoe, setShoe] = useState<ShoeState>(defaultShoe);
   const [roadmapRounds, setRoadmapRounds] = useState<Array<{ result: string }>>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(isApiConfigured);
-  const [error, setError] = useState<string | null>(
-    isApiConfigured ? null : 'ยังไม่ได้กำหนด backend URL สำหรับโหมด production',
-  );
-  const [roundStatus, setRoundStatus] = useState<string | null>(
-    isApiConfigured ? null : 'ยังไม่มีเซสชันที่ใช้งาน — ตั้งค่า VITE_API_BASE_URL ก่อนเริ่มเกม',
-  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [roundStatus, setRoundStatus] = useState<string | null>(null);
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
   const [history, setHistory] = useState<RoundHistoryEntry[]>([]);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
@@ -158,7 +154,6 @@ export function BaccaratRoom() {
   };
 
   useEffect(() => {
-    if (!isApiConfigured) return;
     let cancelled = false;
 
     apiPost<{ session_id: string; shoe: ShoeState }>('/sessions', {})

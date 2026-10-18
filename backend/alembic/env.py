@@ -19,8 +19,8 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    # Tests override this with cfg.set_main_option("sqlalchemy.url", ...); normally DIRECT_URL is used.
-    return config.get_main_option("sqlalchemy.url") or settings.DIRECT_URL
+    # Tests override this with cfg.set_main_option("sqlalchemy.url", ...); normally DATABASE_URL is used.
+    return config.get_main_option("sqlalchemy.url") or settings.DATABASE_URL
 
 
 def run_migrations_offline() -> None:

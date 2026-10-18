@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 
@@ -106,6 +107,30 @@ def test_add_fills_row_then_starts_next_round(client: TestClient) -> None:
     body = grid.add("G")
     assert body["round"] == {"round_no": 2, "results": "G", "status": "open"}
     assert body["total_rounds"] == 2
+
+
+def test_writes_to_unknown_table_are_404(client: TestClient) -> None:
+    assert client.post(f"{BASE}/nope/plays", json={"value": "R", "version": 0}).status_code == 404
+    assert client.delete(f"{BASE}/nope/plays/last", params={"version": 0}).status_code == 404
+
+
+def test_tap_uses_few_queries(client: TestClient, engine) -> None:
+    """Latency to a remote DB is per round-trip, so keep the statements per tap fixed and small."""
+    grid = Grid(client)
+    grid.add("R")
+    statements: list[str] = []
+
+    def count(conn, cursor, statement, *args) -> None:
+        statements.append(statement.split()[0])
+
+    event.listen(engine.sync_engine, "before_cursor_execute", count)
+    try:
+        grid.add("B")
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", count)
+
+    # UPDATE..RETURNING version, SELECT last round, upsert count, UPDATE round, INSERT event, SELECT stats
+    assert len(statements) == 6, statements
 
 
 def test_invalid_value_is_rejected(client: TestClient) -> None:
@@ -208,6 +233,17 @@ def test_range_limits_rounds(client: TestClient) -> None:
     assert grid.state(to_round=1)["stats"]["counts"]["R"] == 1
     assert grid.state(from_round=2, to_round=2)["stats"]["range"] == {"from_round": 2, "to_round": 2}
     assert client.get(f"{BASE}/t4", params={"from_round": 3, "to_round": 2}).status_code == 422
+
+
+def test_last_rounds_follows_newest_round(client: TestClient) -> None:
+    grid = Grid(client, last_rounds=2)
+    for row in ("RRRR", "BBBB", "YYYY"):
+        for value in row:
+            body = grid.add(value)
+    assert body["stats"]["range"] == {"from_round": 2, "to_round": 3}
+    assert body["stats"]["counts"] == {"R": 0, "B": 1, "Y": 1, "K": 0, "G": 0}
+    assert grid.state(last_rounds=10)["stats"]["range"] == {"from_round": 1, "to_round": 3}
+    assert client.get(f"{BASE}/t4", params={"last_rounds": 2, "from_round": 1}).status_code == 422
 
 
 def test_grid_paging(client: TestClient) -> None:
