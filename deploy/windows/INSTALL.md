@@ -2,22 +2,31 @@
 
 ทั้งระบบอยู่บนเครื่องเดียว: **PostgreSQL** (ฐานข้อมูล) + **Kardex server** (API + หน้าเว็บ) · iPad/มือถือใน WiFi เดียวกันเปิดผ่าน `http://<IP เครื่อง>:8000/dragon-tiger`
 
-ไฟล์ติดตั้ง `kardex-<version>.zip` สร้างบนเครื่อง dev ด้วย `deploy/build-package.sh` (มีหน้าเว็บที่ build แล้ว + Python wheels สำหรับ Windows → server ไม่ต้องมี Node และแทบไม่ต้องใช้อินเทอร์เน็ต)
+ไฟล์ทั้งหมดอยู่ใน USB (สร้างบนเครื่อง dev ด้วย `deploy/make-usb.sh <version>` → `release/kardex-<version>/`) — ติดตั้งได้โดยไม่ต้องใช้อินเทอร์เน็ต:
+
+```
+kardex-1.0.0/
+├── kardex-1.0.0.zip                     ← ตัวโปรแกรม (หน้าเว็บที่ build แล้ว + Python wheels สำหรับ Windows)
+├── postgresql-16.15-1-windows-x64.exe   ← ฐานข้อมูล
+├── python-3.12.10-amd64.exe             ← Python
+├── INSTALL.md                           ← ไฟล์นี้
+└── SHA256SUMS.txt                       ← ตรวจว่าไฟล์ไม่เสีย: certutil -hashfile <ไฟล์> SHA256
+```
 
 ## ต้องมีก่อน
 
 | | หมายเหตุ |
 |---|---|
 | Windows Server 2016 ขึ้นไป (64-bit) + สิทธิ์ Administrator | ผ่าน Remote Desktop ได้ |
-| **PostgreSQL** 13 ขึ้นไป (แนะนำ 16/17) — installer ของ EDB: <https://www.enterprisedb.com/downloads/postgres-postgresql-downloads> | ถ้าเวอร์ชันใหม่ไม่ยอมลงบน Server 2016 ให้ใช้เวอร์ชันต่ำลง |
-| **Python 3.12** — `python-3.12.10-amd64.exe` จาก <https://www.python.org/downloads/release/python-31210/> | 3.12.10 คือ 3.12 ตัวสุดท้ายที่มี installer สำหรับ Windows |
+| **PostgreSQL 16** — `postgresql-16.15-1-windows-x64.exe` ใน USB (หรือจาก <https://www.enterprisedb.com/downloads/postgres-postgresql-downloads>) | ถ้าไม่ยอมลงบน Server 2016 ให้โหลดเวอร์ชัน 15 แทน (สคริปต์รองรับ 15 ขึ้นไป) |
+| **Python 3.12** — `python-3.12.10-amd64.exe` ใน USB (หรือจาก <https://www.python.org/downloads/release/python-31210/>) | 3.12.10 คือ 3.12 ตัวสุดท้ายที่มี installer สำหรับ Windows |
 | IP ของเครื่องต้องไม่เปลี่ยน | ตั้ง static IP หรือจอง IP ใน router (DHCP reservation) ไม่งั้น iPad จะหา server ไม่เจอหลังรีสตาร์ท |
 
 ## ติดตั้งครั้งแรก (~15 นาที)
 
 1. **PostgreSQL**: รัน installer → ตั้งรหัสผ่านของ user `postgres` (**จดไว้ในที่ปลอดภัย**) → port `5432` → ไม่ต้องลง Stack Builder
 2. **Python 3.12**: รัน installer → เลือก **Customize installation** → ติ๊ก **py launcher** และ **Install Python 3.12 for all users** (สำคัญ: ระบบรันเป็น SYSTEM ต้องเข้าถึง Python ได้)
-3. **แตก zip** ไปที่ `C:\Kardex` ให้ได้ `C:\Kardex\backend`, `C:\Kardex\frontend`, `C:\Kardex\deploy`, … (ถ้า Windows บล็อกไฟล์: คลิกขวา zip → Properties → ติ๊ก **Unblock** ก่อนแตก)
+3. **แตก `kardex-1.0.0.zip`** แล้วย้ายเนื้อหาในโฟลเดอร์ `kardex-1.0.0` ไปที่ `C:\Kardex` ให้ได้ `C:\Kardex\backend`, `C:\Kardex\frontend`, `C:\Kardex\deploy`, … (ถ้า Windows บล็อกไฟล์: คลิกขวา zip → Properties → ติ๊ก **Unblock** ก่อนแตก)
 4. คลิกขวา `C:\Kardex\deploy\windows\install.bat` → **Run as administrator** → ใส่รหัสผ่านของ `postgres` เมื่อถาม
 
 สคริปต์จะ: สร้าง Python environment → สร้าง user/database `kardex` พร้อมรหัสผ่านสุ่ม (เก็บใน `C:\Kardex\backend\.env`) → สร้างตาราง → เปิด firewall port 8000 → ตั้ง task ให้ server เริ่มเองตอนเปิดเครื่อง และ backup ทุกวันตี 3 → เปิด server แล้วแสดง URL สำหรับ iPad

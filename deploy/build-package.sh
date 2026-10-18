@@ -11,7 +11,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SHA="$(git -C "$ROOT" rev-parse --short HEAD)"
 VERSION="${1:-$(date +%Y.%m.%d)-$SHA}"
 NAME="kardex-$VERSION"
-OUT="$ROOT/release/$NAME"
+STAGE="$ROOT/release/.build"
+OUT="$STAGE/$NAME"
 PYTHON="$ROOT/backend/venv/bin/python"
 
 if [ -n "$(git -C "$ROOT" status --porcelain)" ]; then
@@ -25,7 +26,7 @@ echo "==> Backend tests"
 (cd "$ROOT/backend" && "$PYTHON" -m pytest -q)
 
 echo "==> Assembling $OUT"
-rm -rf "$OUT" "$ROOT/release/$NAME.zip"
+rm -rf "$STAGE" "$ROOT/release/$NAME.zip"
 mkdir -p "$OUT/backend" "$OUT/frontend" "$OUT/deploy"
 rsync -a --exclude '__pycache__' "$ROOT/backend/app" "$ROOT/backend/alembic" "$OUT/backend/"
 cp "$ROOT/backend/alembic.ini" "$ROOT/backend/requirements.txt" "$OUT/backend/"
@@ -54,5 +55,6 @@ fi
 rm -f "$WIN_REQS"
 
 echo "==> Zipping"
-(cd "$ROOT/release" && zip -qr "$NAME.zip" "$NAME")
+(cd "$STAGE" && zip -qr "$ROOT/release/$NAME.zip" "$NAME")
+rm -rf "$STAGE"
 echo "Done: release/$NAME.zip ($(du -h "$ROOT/release/$NAME.zip" | cut -f1))"

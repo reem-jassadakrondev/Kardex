@@ -18,6 +18,7 @@
 | `backend/alembic/` | migration ของฐานข้อมูล |
 | `backend/tests/` | pytest |
 | `deploy/build-package.sh` | สร้างไฟล์ติดตั้ง `release/kardex-<version>.zip` สำหรับเครื่องลูกค้า |
+| `deploy/make-usb.sh` | สร้างโฟลเดอร์สำหรับ USB `release/kardex-<version>/` = zip + installer PostgreSQL 16 + Python 3.12 + INSTALL.md + SHA256 |
 | `deploy/windows/` | สคริปต์ติดตั้ง/อัปเดต/backup/restore บน Windows Server + **[คู่มือติดตั้ง INSTALL.md](deploy/windows/INSTALL.md)** |
 
 ## หน้าและเส้นทาง
@@ -98,7 +99,9 @@ npm run check:legacy        # ตรวจว่า JS ที่ build ออก
 
 ### ติดตั้งเครื่องลูกค้า (Windows Server)
 
-ดู **[deploy/windows/INSTALL.md](deploy/windows/INSTALL.md)** — สรุป: `deploy/build-package.sh` บนเครื่อง dev → copy zip ไป server → แตกที่ `C:\Kardex` → `install.bat` (Run as administrator)
+ดู **[deploy/windows/INSTALL.md](deploy/windows/INSTALL.md)** — สรุป: `deploy/make-usb.sh 1.0.0` บนเครื่อง dev → copy โฟลเดอร์ `release/kardex-1.0.0/` ลง USB → ที่ server ลง PostgreSQL + Python จาก USB → แตก zip ที่ `C:\Kardex` → `install.bat` (Run as administrator)
+
+**ติดตั้งผ่าน USB ไม่ใช้ git:** zip มีหน้าเว็บที่ build แล้ว + Python wheels → server ไม่ต้องมี git/Node/อินเทอร์เน็ต และไม่มีซอร์สโค้ด/ประวัติ git บนเครื่องลูกค้า · อัปเดตครั้งต่อไปส่ง zip ผ่าน Remote Desktop ได้
 
 ### ติดตั้งแบบเครื่องเดียวด้วยมือ (macOS/Linux หรือทดสอบ)
 
@@ -253,6 +256,7 @@ python -m scripts.bench_dt --rounds 1000000 --database-url "postgresql+asyncpg:/
 - [x] **เปลี่ยนเป็น PostgreSQL บนเครื่องเดียวกัน** — เลิกใช้ Supabase, backend เสิร์ฟหน้าเว็บเอง, จิ้มต่อเนื่องได้ (คิว), จิ้ม 1 ครั้ง = 6 query, benchmark 1 ล้านรอบบน PostgreSQL (2026-10-18)
 - [ ] **M4 ติดตั้งเครื่องลูกค้า** (Windows Server ~2016, iPad Gen 4, remote + หน้างาน, backup → cloud ของ dev/USB, ยังไม่ต้อง PIN)
   - [x] ชุดติดตั้ง `deploy/build-package.sh` + `deploy/windows/` (install / update / backup / restore / status), server เริ่มเองตอนเปิดเครื่องและรีสตาร์ทเองถ้าล่ม, backup ทุกวัน + สำเนาไป cloud/USB, คู่มือ INSTALL.md (2026-10-18)
+  - [x] **v1.0.0 + โฟลเดอร์ USB** (`deploy/make-usb.sh`) — ทดสอบ zip จริงก่อนส่ง: ติดตั้งใหม่บน PostgreSQL ว่าง (migrate ถึง 0004), เบราว์เซอร์จำลองเครื่องเก่าทุกฟีเจอร์ผ่าน (หน้าหลัก, บันทึกสี/ข้าม/ลบ/จบรอบ/ทิ้งรอบ, ช่วงรอบ, 2 เครื่อง + 409, จิ้มรัว, รีโหลด, มือถือ), status/backup/restore/รีสตาร์ทเอง/อัปเดต ผ่าน (2026-10-18)
   - [x] ทดสอบบน macOS ด้วย PowerShell 7 + PostgreSQL cluster ชั่วคราว: ติดตั้ง, บันทึก, status, backup, restore, server ล่มแล้วกลับมาเอง, อัปเดตเวอร์ชัน (ข้อมูล/.env อยู่ครบ)
   - [ ] **ทดสอบบน Windows Server จริง** (Task Scheduler, firewall, PowerShell 5.1 — ทดสอบบน Mac ไม่ได้)
   - [ ] ตั้งสำเนา backup ไป cloud ของ dev (เลือกบริการ) · ทดสอบกู้คืนบนเครื่องลูกค้า
