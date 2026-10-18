@@ -2,6 +2,8 @@ const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ??
   (window.location.hostname === 'localhost' ? 'http://localhost:8000/api/v1' : '');
 
+export const isApiConfigured = !!API_BASE_URL;
+
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   if (!API_BASE_URL) {
     throw new Error('Backend is not configured. Set VITE_API_BASE_URL in the deployment environment.');

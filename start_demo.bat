@@ -31,7 +31,7 @@ if not exist frontend\node_modules (
     exit /b 1
 )
 
-start "Kardex Backend" cmd /k "cd /d ""%~dp0backend"" && call venv\Scripts\activate.bat && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+start "Kardex Backend" cmd /k "cd /d ""%~dp0backend"" && call venv\Scripts\activate.bat && alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
 start "Kardex Frontend" cmd /k "cd /d ""%~dp0frontend"" && npm run dev -- --host 0.0.0.0 --port 4173"
 

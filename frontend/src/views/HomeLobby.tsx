@@ -1,7 +1,7 @@
 import { BarChart3, Dice5, Gauge, Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiGet } from '../api/client';
+import { apiGet, isApiConfigured } from '../api/client';
 import { GameCard } from '../components/GameCard';
 import { Navbar } from '../components/Navbar';
 
@@ -26,9 +26,7 @@ export function HomeLobby() {
 
   useEffect(() => {
     const loadGames = async () => {
-      const isConfigured = !!import.meta.env.VITE_API_BASE_URL || window.location.hostname === 'localhost';
-
-      if (!isConfigured) {
+      if (!isApiConfigured) {
         setGames(fallbackGames);
         setIsLoading(false);
         return;

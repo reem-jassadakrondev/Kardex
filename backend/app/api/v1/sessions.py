@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -15,25 +16,23 @@ from app.schemas.session import SessionCreateResponse, SessionDetail, ShoeState
 from app.services.baccarat_engine import determine_winner, hand_score
 from app.services.card_tracker import (
     build_initial_shoe,
-    calculate_dragon_tiger_probability,
     calculate_probability,
     get_cards_remaining_count,
     remove_cards_from_shoe,
 )
-from app.services.dragon_tiger_engine import (
-    determine_dragon_tiger_winner,
-    is_dragon_tiger_natural,
-    is_flush,
-    is_flush_tie,
-)
+
+# Card/shoe sessions are baccarat-only. Dragon Tiger is being rebuilt as a color grid on game_tables.
+SESSION_GAME_CODES = {"baccarat"}
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
 @router.post("", response_model=SessionCreateResponse)
-async def create_session(payload: dict | None = None, db: AsyncSession = Depends(get_db)) -> SessionCreateResponse:
+async def create_session(payload: Optional[dict] = None, db: AsyncSession = Depends(get_db)) -> SessionCreateResponse:
     body = payload or {}
     game_code = body.get("game_code") or "baccarat"
+    if game_code not in SESSION_GAME_CODES:
+        raise HTTPException(status_code=400, detail=f"Sessions are not supported for game: {game_code}")
     game = await db.get(Game, game_code)
     if game is None:
         raise HTTPException(status_code=404, detail=f"Game not found: {game_code}")
@@ -58,11 +57,7 @@ async def create_session(payload: dict | None = None, db: AsyncSession = Depends
     await db.commit()
     await db.refresh(session)
 
-    prob = (
-        calculate_dragon_tiger_probability(session.cards_remaining)
-        if game_code == "dragon_tiger"
-        else calculate_probability(session.cards_remaining)
-    )
+    prob = calculate_probability(session.cards_remaining)
 
     return SessionCreateResponse(
         session_id=session.id,
@@ -80,11 +75,7 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)) -> Se
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    prob = (
-        calculate_dragon_tiger_probability(session.cards_remaining)
-        if session.game_code == "dragon_tiger"
-        else calculate_probability(session.cards_remaining)
-    )
+    prob = calculate_probability(session.cards_remaining)
 
     return SessionDetail(
         id=session.id,
@@ -108,69 +99,18 @@ async def create_round(session_id: str, payload: dict, db: AsyncSession = Depend
     banker_cards = payload.get("banker_cards") or []
     result = payload.get("result")
 
-    is_dragon_tiger = session.game_code == "dragon_tiger"
+    if not player_cards and not banker_cards and result is None:
+        raise HTTPException(status_code=400, detail="Round payload is required")
 
-    if is_dragon_tiger:
-        dragon_card = payload.get("dragon_card")
-        tiger_card = payload.get("tiger_card")
-        if dragon_card and tiger_card:
-            banker_cards = [dragon_card]
-            player_cards = [tiger_card]
-        elif not player_cards and not banker_cards and result is None:
-            raise HTTPException(status_code=400, detail="Dragon Tiger round requires cards or result")
+    if not player_cards:
+        player_cards = [f"H{rank}" for rank in ["9", "8"]]
+    if not banker_cards:
+        banker_cards = [f"D{rank}" for rank in ["7", "6"]]
 
-        if not banker_cards and payload.get("result") in {"dragon", "banker"}:
-            banker_cards = ["HK"]
-            player_cards = ["H7"]
-        elif not player_cards and payload.get("result") in {"tiger", "player"}:
-            banker_cards = ["H7"]
-            player_cards = ["HK"]
-        elif not player_cards and payload.get("result") == "tie":
-            banker_cards = ["H8"]
-            player_cards = ["D8"]
-
-        if not banker_cards:
-            banker_cards = ["HK"]
-        if not player_cards:
-            player_cards = ["H7"]
-
-        banker_cards = banker_cards[:1]
-        player_cards = player_cards[:1]
-
-        player_score = hand_score(player_cards)
-        banker_score = hand_score(banker_cards)
-
-        if result in {"dragon", "banker"}:
-            result = "banker"
-        elif result in {"tiger", "player"}:
-            result = "player"
-        elif result == "tie":
-            result = "tie"
-        elif result is None:
-            result = determine_dragon_tiger_winner(banker_cards[0], player_cards[0])
-
-        is_natural = is_dragon_tiger_natural(banker_cards[0]) or is_dragon_tiger_natural(player_cards[0])
-        round_flush = is_flush(banker_cards[0], player_cards[0])
-        round_flush_tie = is_flush_tie(banker_cards[0], player_cards[0])
-        is_banker_pair = round_flush
-        is_player_pair = round_flush_tie
-    else:
-        if not player_cards and not banker_cards and result is None:
-            raise HTTPException(status_code=400, detail="Round payload is required")
-
-        if not player_cards:
-            player_cards = [f"H{rank}" for rank in ["9", "8"]]
-        if not banker_cards:
-            banker_cards = [f"D{rank}" for rank in ["7", "6"]]
-
-        player_score = hand_score(player_cards)
-        banker_score = hand_score(banker_cards)
-        if result is None:
-            result = determine_winner(player_score, banker_score)
-
-        is_natural = False
-        is_banker_pair = False
-        is_player_pair = False
+    player_score = hand_score(player_cards)
+    banker_score = hand_score(banker_cards)
+    if result is None:
+        result = determine_winner(player_score, banker_score)
 
     round_number = (await db.execute(select(Round).where(Round.session_id == session_id))).scalars().all()
     new_round = Round(
@@ -182,9 +122,9 @@ async def create_round(session_id: str, payload: dict, db: AsyncSession = Depend
         player_score=player_score,
         banker_score=banker_score,
         result=result,
-        is_player_pair=is_player_pair if is_dragon_tiger else False,
-        is_banker_pair=is_banker_pair if is_dragon_tiger else False,
-        is_natural=is_natural if is_dragon_tiger else False,
+        is_player_pair=False,
+        is_banker_pair=False,
+        is_natural=False,
         created_at=datetime.now(timezone.utc),
     )
     db.add(new_round)
@@ -197,20 +137,11 @@ async def create_round(session_id: str, payload: dict, db: AsyncSession = Depend
     await db.commit()
     await db.refresh(session)
 
-    prob = (
-        calculate_dragon_tiger_probability(session.cards_remaining)
-        if is_dragon_tiger
-        else calculate_probability(session.cards_remaining)
-    )
+    prob = calculate_probability(session.cards_remaining)
 
     return {
         "round_id": new_round.id,
         "result": result,
-        "is_natural": new_round.is_natural,
-        "is_flush": new_round.is_banker_pair if is_dragon_tiger else False,
-        "is_flush_tie": new_round.is_player_pair if is_dragon_tiger else False,
-        "dragon_card": banker_cards[0] if is_dragon_tiger else None,
-        "tiger_card": player_cards[0] if is_dragon_tiger else None,
         "cards_remaining": session.cards_remaining,
         "total_cards_remaining": session.total_cards_remaining,
         "probability": prob,

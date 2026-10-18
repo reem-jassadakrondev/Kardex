@@ -1,7 +1,7 @@
 import { Activity, ArrowLeft, BarChart3, Coins, RefreshCcw, Save, ShieldCheck, TrendingUp, WalletCards } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { apiGet, apiPost } from '../api/client';
+import { apiGet, apiPost, isApiConfigured } from '../api/client';
 import { CardMatrix } from '../components/CardMatrix';
 import { PlayingCard } from '../components/PlayingCard';
 import { ProbabilityBar } from '../components/ProbabilityBar';
@@ -46,9 +46,13 @@ export function BaccaratRoom() {
   const [shoe, setShoe] = useState<ShoeState>(defaultShoe);
   const [roadmapRounds, setRoadmapRounds] = useState<Array<{ result: string }>>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [roundStatus, setRoundStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(isApiConfigured);
+  const [error, setError] = useState<string | null>(
+    isApiConfigured ? null : 'ยังไม่ได้กำหนด backend URL สำหรับโหมด production',
+  );
+  const [roundStatus, setRoundStatus] = useState<string | null>(
+    isApiConfigured ? null : 'ยังไม่มีเซสชันที่ใช้งาน — ตั้งค่า VITE_API_BASE_URL ก่อนเริ่มเกม',
+  );
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' | 'info' } | null>(null);
   const [history, setHistory] = useState<RoundHistoryEntry[]>([]);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
@@ -87,38 +91,6 @@ export function BaccaratRoom() {
   const refreshSession = async (id: string) => {
     const data = await apiGet<ShoeState>(`/sessions/${id}`);
     setShoe(data);
-  };
-
-  const createSession = async () => {
-    const isConfigured = !!import.meta.env.VITE_API_BASE_URL || window.location.hostname === 'localhost';
-
-    if (!isConfigured) {
-      setLoading(false);
-      setError('ยังไม่ได้กำหนด backend URL สำหรับโหมด production');
-      setRoundStatus('ยังไม่มีเซสชันที่ใช้งาน — ตั้งค่า VITE_API_BASE_URL ก่อนเริ่มเกม');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-      setRoundStatus(null);
-      const data = await apiPost<{ session_id: string; shoe: ShoeState }>('/sessions', {});
-      setSessionId(data.session_id);
-      setShoe(data.shoe);
-      setRoadmapRounds([]);
-      setPendingBet(null);
-      showToast('เริ่มเซสชันใหม่แล้ว', 'success');
-    } catch (err) {
-      if (import.meta.env.DEV) {
-        console.error(err);
-      }
-      const message = 'Unable to connect to the backend. Please check the API server.';
-      setError(message);
-      showToast('ไม่สามารถเชื่อมต่อ API ได้', 'error');
-    } finally {
-      setLoading(false);
-    }
   };
 
   const submitRound = async () => {
@@ -186,7 +158,31 @@ export function BaccaratRoom() {
   };
 
   useEffect(() => {
-    void createSession();
+    if (!isApiConfigured) return;
+    let cancelled = false;
+
+    apiPost<{ session_id: string; shoe: ShoeState }>('/sessions', {})
+      .then((data) => {
+        if (cancelled) return;
+        setSessionId(data.session_id);
+        setShoe(data.shoe);
+        setToast({ message: 'เริ่มเซสชันใหม่แล้ว', tone: 'success' });
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        if (import.meta.env.DEV) {
+          console.error(err);
+        }
+        setError('Unable to connect to the backend. Please check the API server.');
+        setToast({ message: 'ไม่สามารถเชื่อมต่อ API ได้', tone: 'error' });
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -194,10 +190,6 @@ export function BaccaratRoom() {
     const timeoutId = window.setTimeout(() => setToast(null), 2600);
     return () => window.clearTimeout(timeoutId);
   }, [toast]);
-
-  useEffect(() => {
-    setPendingBet({ side: betSide, amount: betAmount });
-  }, [betSide, betAmount]);
 
   const handleCardClick = (card: string) => {
     setSelectedCards((current) => {
@@ -370,7 +362,10 @@ export function BaccaratRoom() {
                   <button
                     key={key}
                     type="button"
-                    onClick={() => setBetSide(key)}
+                    onClick={() => {
+                      setBetSide(key);
+                      setPendingBet({ side: key, amount: betAmount });
+                    }}
                     className={`rounded-xl border px-3 py-3 text-sm font-semibold transition ${
                       betSide === key
                         ? `border-transparent ${sideMeta[key].color} text-white shadow-md`
@@ -399,6 +394,7 @@ export function BaccaratRoom() {
                       const nextValue = Number(event.target.value) || 0;
                       setBetAmount(nextValue);
                       setDefaultStake(nextValue);
+                      setPendingBet({ side: betSide, amount: nextValue });
                     }}
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none ring-0 focus:border-slate-400"
                     placeholder="0"
@@ -413,6 +409,7 @@ export function BaccaratRoom() {
                       onClick={() => {
                         setBetAmount(amount);
                         setDefaultStake(amount);
+                        setPendingBet({ side: betSide, amount });
                       }}
                       className={`rounded-lg border px-2 py-2 text-sm font-medium transition ${
                         betAmount === amount
