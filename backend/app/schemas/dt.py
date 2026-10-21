@@ -80,3 +80,19 @@ class TableSummaryOut(BaseModel):
 
 class TableNameIn(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
+
+
+class MatchesOut(BaseModel):
+    version: int
+    round_no: int
+    position: int
+    window_from: int | None
+    window_to: int | None
+    pattern: str
+    range: RangeOut
+    total_matches: int | None
+    sample_size: int
+    counts: dict[str, int]
+    percentages: dict[str, float]
+    rounds: list[RoundOut]
+    has_more: bool

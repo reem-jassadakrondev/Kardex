@@ -14,6 +14,7 @@ from app.models.game_table import GameTable
 from app.schemas.dt import (
     CursorOut,
     GridPage,
+    MatchesOut,
     PlayIn,
     RangeOut,
     RoundOut,
@@ -23,7 +24,7 @@ from app.schemas.dt import (
     VersionIn,
     WriteResult,
 )
-from app.services import dt_grid
+from app.services import dt_grid, matching
 
 router = APIRouter(prefix="/tables", tags=["tables"])
 
@@ -117,6 +118,36 @@ async def get_grid(
         version=table.version,
         rounds=[round_out(row) for row in rows],
         has_more=bool(rows) and rows[0].round_no > 1,
+    )
+
+
+@router.get("/{code}/matches", response_model=MatchesOut)
+async def get_matches(
+    table: GameTable = Depends(load_table),
+    scope: StatsRange = Depends(),
+    window: int = Query(5, ge=0, le=60, description="compare the last N cells of the current round; 0 = all"),
+    before_round: int | None = Query(None, ge=1),
+    limit: int = Query(50, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+) -> MatchesOut:
+    last = await dt_grid.last_round(db, table.id)
+    m = await matching.find_matches(
+        db, table, last, window, scope.from_round, scope.to_round, scope.last_rounds, before_round, limit
+    )
+    return MatchesOut(
+        version=table.version,
+        round_no=m.round_no,
+        position=m.position,
+        window_from=m.window_from,
+        window_to=m.window_to,
+        pattern=m.pattern,
+        range=RangeOut(from_round=m.range_from, to_round=m.range_to),
+        total_matches=m.total,
+        sample_size=m.sample_size,
+        counts=m.counts,
+        percentages=m.percentages,
+        rounds=[round_out(row) for row in m.rounds],
+        has_more=m.has_more,
     )
 
 

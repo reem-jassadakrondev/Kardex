@@ -301,6 +301,16 @@ async def column_counts(db: AsyncSession, table_id: int, position: int, lo: int,
     return counts
 
 
+def stats_range(last: DtRound | None, from_round: int | None, to_round: int | None, last_rounds: int | None) -> tuple[int, int]:
+    """Rounds [lo, hi] the stats use: [from_round, to_round] or the newest `last_rounds`. Empty when lo > hi."""
+    max_round = last.round_no if last else 0
+    if last_rounds is not None:
+        from_round, to_round = max_round - last_rounds + 1, None
+    lo = max(1, from_round or 1)
+    hi = min(to_round, max_round) if to_round is not None else max_round
+    return lo, hi
+
+
 async def compute_stats(
     db: AsyncSession,
     table: GameTable,
@@ -314,11 +324,7 @@ async def compute_stats(
     The range is [from_round, to_round], or the newest `last_rounds` rounds when that is given.
     """
     cursor = cursor_of(last)
-    max_round = last.round_no if last else 0
-    if last_rounds is not None:
-        from_round, to_round = max_round - last_rounds + 1, None
-    lo = max(1, from_round or 1)
-    hi = min(to_round, max_round) if to_round is not None else max_round
+    lo, hi = stats_range(last, from_round, to_round, last_rounds)
 
     counts = await column_counts(db, table.id, cursor.position, lo, hi) if lo <= hi else Counter()
     mode = "column"

@@ -1,4 +1,4 @@
-"""Benchmark Dragon Tiger stats on a large synthetic table.
+"""Benchmark color-grid stats and matching on a large synthetic table.
 
     venv/bin/python -m scripts.bench_dt --rounds 1000000                      # temp SQLite DB
     venv/bin/python -m scripts.bench_dt --database-url postgresql+asyncpg://… # existing PostgreSQL
@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from app.core.database import build_engine
 from app.models.dt import DtBlockCount, DtPlayEvent, DtRound
 from app.models.game_table import GameTable
-from app.services import dt_grid
+from app.services import dt_grid, matching
 from tests.test_migrations import alembic_config
 
 PLAYS = 60
@@ -135,6 +135,25 @@ async def measure(engine: AsyncEngine, code: str, rounds: int) -> None:
 
         await timed("add_play", add, repeat=3)
         await timed("delete_last", undo, repeat=3)
+
+        print("matches (จับคู่แถว) with the current round at column 7 (pattern RBRBRB):")
+        while True:  # rewind the open round left by the write timings, then type the pattern
+            last = await dt_grid.last_round(db, table.id)
+            if last is None or last.status != dt_grid.OPEN:
+                break
+            table.version = (await dt_grid.delete_last(db, code, table.version)).table.version
+        for value in "RBRBRB":
+            table.version = (await dt_grid.add_play(db, code, value, table.version)).table.version
+
+        async def matches(size, last_rounds=None):
+            last = await dt_grid.last_round(db, table.id)
+            m = await matching.find_matches(db, table, last, size, last_rounds=last_rounds)
+            return f"{m.total:,} rows match, page {len(m.rounds)}"
+
+        for size in (1, 3, 5, 10):
+            await timed(f"last {size} cells, all rounds", lambda size=size: matches(size), repeat=3)
+        await timed("whole row (6 cells), all rounds", lambda: matches(0), repeat=3)
+        await timed("last 5 cells, last 10,000 rounds", lambda: matches(5, 10_000), repeat=3)
 
 
 async def run_postgres(url: str, rounds: int) -> None:

@@ -5,17 +5,30 @@ import { errorDetail } from '../api/client';
 import type { PlayValue } from '../api/dtGrid';
 import { rememberTable, tablesApi } from '../api/tables';
 import { ColorGrid } from '../components/dtGrid/ColorGrid';
+import { MatchPicker } from '../components/dtGrid/MatchPicker';
 import { isColor } from '../components/dtGrid/colors';
 import { InputPad } from '../components/dtGrid/InputPad';
 import { RangePicker } from '../components/dtGrid/RangePicker';
-import { scopeOf, type RangePreset } from '../components/dtGrid/range';
+import { scopeOf, WINDOW_OPTIONS, type RangePreset } from '../components/dtGrid/range';
 import { StatsPanel } from '../components/dtGrid/StatsPanel';
 import { useDtGrid } from '../hooks/useDtGrid';
+import { useMatches } from '../hooks/useMatches';
 import './dragonTiger.css';
 
 const RANGE_KEY = 'kardex-dt-range';
+const WINDOW_KEY = 'kardex-match-window';
+const DEFAULT_WINDOW = 5;
 
 type Confirm = { action: 'undo' | 'end' | 'discard' | 'trash'; text: string } | null;
+
+function loadWindow(): number {
+  try {
+    const saved = Number(localStorage.getItem(WINDOW_KEY));
+    return WINDOW_OPTIONS.indexOf(saved) >= 0 && localStorage.getItem(WINDOW_KEY) !== null ? saved : DEFAULT_WINDOW;
+  } catch {
+    return DEFAULT_WINDOW;
+  }
+}
 
 function loadRange(): RangePreset {
   try {
@@ -34,8 +47,11 @@ export function TableRoom({ code }: { code: string }) {
   const [nameDraft, setNameDraft] = useState('');
   const [settingsError, setSettingsError] = useState('');
   const [settingsBusy, setSettingsBusy] = useState(false);
-  const grid = useDtGrid(code, scopeOf(range));
+  const [windowSize, setWindowSize] = useState<number>(loadWindow);
+  const scope = scopeOf(range);
+  const grid = useDtGrid(code, scope);
   const { state, queue } = grid;
+  const matches = useMatches(code, state, windowSize, scope, queue.length > 0);
 
   useEffect(() => {
     rememberTable(code);
@@ -44,12 +60,21 @@ export function TableRoom({ code }: { code: string }) {
   useEffect(() => {
     try {
       localStorage.setItem(RANGE_KEY, JSON.stringify(range));
+      localStorage.setItem(WINDOW_KEY, String(windowSize));
     } catch {
       /* storage blocked — the range just won't be remembered */
     }
-  }, [range]);
+  }, [range, windowSize]);
 
   const saving = queue.length;
+
+  // The round being recorded is pinned under the grid; above it are earlier rounds — all of them, or
+  // only those matching its latest cells once it has at least one cell (จับคู่แถว).
+  const cursorRound = state ? state.cursor.round_no : 0;
+  const current = grid.rounds.filter((r) => r.round_no === cursorRound)[0] || { round_no: cursorRound, results: '', status: 'open' as const };
+  const filtering = !!state && state.cursor.position > 1;
+  const match = matches.data && matches.data.window_from !== null ? matches.data : null;
+  const history = filtering ? (match ? match.rounds : []) : grid.rounds.filter((r) => r.round_no !== cursorRound);
   // Colors keep queueing; only another action in the queue (undo/end/discard) moves the cursor unpredictably.
   const actionQueued = queue.some((op) => op.kind !== 'add');
   const colorsEnabled = !!state && !actionQueued;
@@ -222,14 +247,21 @@ export function TableRoom({ code }: { code: string }) {
       ) : state ? (
         <>
           <RangePicker value={range} totalRounds={state.total_rounds} onChange={setRange} />
+          <MatchPicker size={windowSize} match={filtering ? matches.data : null} stale={matches.stale} onChange={setWindowSize} />
 
           <ColorGrid
-            rounds={grid.rounds}
+            rounds={history}
+            current={current}
             cursor={state.cursor}
             playsPerRound={state.table.plays_per_round}
             pending={grid.pendingValues}
-            hasMore={grid.hasMore}
-            onLoadMore={() => void grid.loadMore()}
+            window={filtering && match && match.window_from !== null && match.window_to !== null ? { from: match.window_from, to: match.window_to } : null}
+            emptyText={
+              !filtering ? 'ยังไม่มีรอบก่อนหน้า' : !match || matches.stale ? 'กำลังค้นหาแถวที่ตรงกัน…' : 'ไม่มีแถวที่ตรงกัน — ลองลดจำนวนช่องที่จับคู่'
+            }
+            stale={filtering && matches.stale}
+            hasMore={filtering ? !!match && match.has_more : grid.hasMore}
+            onLoadMore={() => void (filtering ? matches.loadMore() : grid.loadMore())}
           />
 
           {confirm && confirm.action !== 'trash' ? (
@@ -270,7 +302,7 @@ export function TableRoom({ code }: { code: string }) {
               />
             </div>
             <div className="dtg-col">
-              <StatsPanel stats={state.stats} saving={saving} />
+              <StatsPanel stats={state.stats} saving={saving} match={filtering ? match : null} matchStale={matches.stale} />
             </div>
           </div>
         </>
