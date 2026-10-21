@@ -1,4 +1,4 @@
-"""Dragon Tiger color grid API. All endpoints accept from_round/to_round or last_rounds to scope the stats."""
+"""Color grid API (one table's rounds, stats and writes). All endpoints accept from_round/to_round or last_rounds to scope the stats."""
 
 from __future__ import annotations
 

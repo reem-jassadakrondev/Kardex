@@ -10,11 +10,14 @@
 #   deploy/make-usb.sh 1.0.0
 #   SKIP_BUILD=1 deploy/make-usb.sh 1.0.0   # reuse an existing release/kardex-1.0.0.zip
 #
+# Customer machine: Windows 10 Pro 22H2 -> PostgreSQL 17 (supported until 2029-11).
+# On Windows Server 2012 use PG_VERSION=15.19-1: PostgreSQL 16+ requires Windows 10 / Server 2016.
+#
 # Installers are cached in release/downloads/ so the next version doesn't download ~390 MB again.
 set -euo pipefail
 
 VERSION="${1:?usage: deploy/make-usb.sh <version>   e.g. 1.0.0}"
-PG_VERSION="${PG_VERSION:-16.15-1}"
+PG_VERSION="${PG_VERSION:-17.11-1}"
 PY_VERSION="3.12.10"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -34,6 +37,11 @@ download() {
   mkdir -p "$CACHE"
   local expected
   expected="$(curl -sIL "$url" | tr -d '\r' | awk 'tolower($1)=="content-length:"{n=$2} END{print n}')"
+  if [ -z "$expected" ]; then
+    # Server doesn't report a size (nuget.org): download once, keep the cached copy.
+    if [ -s "$file" ]; then echo "    cached $2"; else echo "    downloading $2"; curl -fsSL --retry 3 -o "$file" "$url"; fi
+    return
+  fi
   if [ -f "$file" ] && [ "$(wc -c < "$file" | tr -d ' ')" = "$expected" ]; then
     echo "    cached $2"
     return

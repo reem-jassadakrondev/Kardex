@@ -1,4 +1,4 @@
-"""Dragon Tiger color grid: recording plays and computing hit rates ("อัตราการออก").
+"""Color grid (ตารางสถิติ): recording plays and computing hit rates ("อัตราการออก").
 
 Every write bumps game_tables.version (optimistic lock) and keeps dt_block_counts in sync inside
 the same transaction, so stats never need to scan raw rounds except at the edges of a range.
@@ -114,7 +114,9 @@ def cursor_of(last: DtRound | None) -> Cursor:
 
 
 async def get_table(db: AsyncSession, code: str) -> GameTable | None:
-    return (await db.execute(select(GameTable).where(GameTable.code == code))).scalar_one_or_none()
+    """The table if it exists and is not in the trash."""
+    stmt = select(GameTable).where(GameTable.code == code, GameTable.deleted_at.is_(None))
+    return (await db.execute(stmt)).scalar_one_or_none()
 
 
 async def last_round(db: AsyncSession, table_id: int) -> DtRound | None:
@@ -143,7 +145,7 @@ async def _lock_table(db: AsyncSession, code: str, expected_version: int) -> Gam
     """
     stmt = (
         update(GameTable)
-        .where(GameTable.code == code, GameTable.version == expected_version)
+        .where(GameTable.code == code, GameTable.version == expected_version, GameTable.deleted_at.is_(None))
         .values(version=GameTable.version + 1)
         .returning(GameTable)
         .execution_options(synchronize_session=False, populate_existing=True)

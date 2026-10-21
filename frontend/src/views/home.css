@@ -1,4 +1,4 @@
-/* Home: one entry (Dragon Tiger). Plain legacy-safe CSS like dragonTiger.css. */
+/* Home: list of tables (โต๊ะ) + add / trash. Plain legacy-safe CSS like dragonTiger.css. */
 
 .home {
   max-width: 560px;
@@ -47,6 +47,7 @@
 }
 
 .home__entry {
+  margin-bottom: 10px;
   -webkit-appearance: none;
   appearance: none;
   display: -webkit-box;
@@ -96,4 +97,155 @@
   width: 20px;
   height: 20px;
   color: #a1a1aa;
+}
+
+.home__tag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #f4f4f5;
+  color: #52525b;
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: 3px;
+}
+
+.home__muted {
+  color: #a1a1aa;
+  font-size: 13px;
+}
+
+.home__error {
+  color: #b91c1c;
+  font-size: 13px;
+}
+
+.home__btn,
+.home__add,
+.home__link {
+  -webkit-appearance: none;
+  appearance: none;
+  font: inherit;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.home__btn {
+  padding: 8px 14px;
+  border: 1px solid #d4d4d8;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #3f3f46;
+  font-size: 14px;
+}
+
+.home__btn:disabled {
+  opacity: 0.4;
+}
+
+.home__btn--dark {
+  border-color: #18181b;
+  background: #18181b;
+  color: #ffffff;
+}
+
+.home__btn--danger {
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.home__add {
+  width: 100%;
+  padding: 14px;
+  border: 1px dashed #d4d4d8;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #71717a;
+  font-size: 14px;
+}
+
+.home__add-icon {
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
+  vertical-align: -3px;
+}
+
+.home__form,
+.home__confirm {
+  padding: 12px;
+  border: 1px solid #e4e4e7;
+  border-radius: 14px;
+}
+
+.home__form > *,
+.home__confirm > * {
+  margin: 0 8px 6px 0;
+  vertical-align: middle;
+}
+
+.home__confirm {
+  margin-top: 8px;
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.home__confirm p {
+  margin: 0 0 8px;
+  color: #7f1d1d;
+  font-size: 13px;
+}
+
+.home__input {
+  width: 220px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d4d4d8;
+  border-radius: 10px;
+  background: #ffffff;
+  font: inherit;
+  font-size: 16px; /* >=16px stops iOS zooming into the field */
+}
+
+.home__trash {
+  margin-top: 32px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f2;
+}
+
+.home__link {
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: #71717a;
+  font-size: 13px;
+}
+
+.home__trash-row {
+  display: -webkit-box;
+  display: -webkit-flex;
+  display: flex;
+  -webkit-align-items: center;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid #f4f4f5;
+}
+
+.home__trash-row .home__btn {
+  margin-left: 8px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.home__trash-text {
+  -webkit-box-flex: 1;
+  -webkit-flex: 1 1 auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.home__trash-name {
+  display: block;
+  color: #52525b;
 }

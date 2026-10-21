@@ -16,6 +16,7 @@ param(
     [string]$DbUser = 'kardex',
     [string]$BackupCopyDir = '',     # optional second backup location (cloud-synced folder / USB)
     [string]$BackupTime = '03:00',
+    [switch]$KeepSleep,              # don't change the power plan (default: never sleep/hibernate on AC power)
     [switch]$SkipTasks               # don't touch firewall / scheduled tasks (testing on non-Windows)
 )
 
@@ -132,6 +133,14 @@ function Open-Firewall {
     Write-Ok "firewall: inbound TCP $Port allowed"
 }
 
+function Disable-Sleep {
+    # A desktop Windows (10/11) sleeps after idle by default; asleep, the server stops answering the iPads.
+    # AC power only: a laptop on battery may still sleep. The display may still turn off.
+    powercfg /change standby-timeout-ac 0 | Out-Null
+    powercfg /change hibernate-timeout-ac 0 | Out-Null
+    Write-Ok 'power: never sleep / hibernate on AC power'
+}
+
 function Show-Urls {
     $ips = @()
     if ($OnWindows) {
@@ -140,8 +149,8 @@ function Show-Urls {
     }
     Write-Host ''
     Write-Host 'Kardex is installed. Open on iPads / phones on the same network:' -ForegroundColor Green
-    foreach ($ip in $ips) { Write-Host "    http://${ip}:$Port/dragon-tiger" -ForegroundColor Green }
-    Write-Host "    (on this machine: http://localhost:$Port/dragon-tiger)"
+    foreach ($ip in $ips) { Write-Host "    http://${ip}:$Port/" -ForegroundColor Green }
+    Write-Host "    (on this machine: http://localhost:$Port/)"
 }
 
 # --- main ---------------------------------------------------------------------------------------
@@ -204,6 +213,7 @@ Write-Ok 'schema up to date'
 if ($OnWindows -and -not $SkipTasks) {
     Write-Step 'Windows services'
     Open-Firewall
+    if (-not $KeepSleep) { Disable-Sleep }
     Register-KardexTasks
     Start-KardexServer
     if (Wait-KardexHealthy $Port 60) { Write-Ok "server answering on port $Port" }

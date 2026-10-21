@@ -22,8 +22,9 @@ if ($OnWindows) {
 }
 
 try {
-    $state = Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/v1/tables/dt-1" -TimeoutSec 5
-    Write-Ok ("server + database OK: {0} rounds, next cell round {1} column {2}" -f $state.total_rounds, $state.cursor.round_no, $state.cursor.position)
+    $tables = @(Invoke-RestMethod -Uri "http://127.0.0.1:$Port/api/v1/tables" -TimeoutSec 5)
+    Write-Ok ("server + database OK: {0} table(s)" -f $tables.Count)
+    foreach ($t in $tables) { Write-Host ("        {0}: {1} rounds" -f $t.name, $t.total_rounds) }
 } catch {
     Write-Warn "server not answering on port ${Port}: $($_.Exception.Message)"
 }

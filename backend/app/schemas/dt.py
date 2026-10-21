@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -66,3 +67,16 @@ class VersionIn(BaseModel):
 
 class PlayIn(VersionIn):
     value: PlayValue
+
+
+class TableSummaryOut(BaseModel):
+    code: str
+    name: str
+    plays_per_round: int
+    total_rounds: int
+    created_at: datetime
+    deleted_at: datetime | None
+
+
+class TableNameIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)

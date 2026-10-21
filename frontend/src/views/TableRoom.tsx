@@ -1,7 +1,9 @@
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Settings } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { errorDetail } from '../api/client';
 import type { PlayValue } from '../api/dtGrid';
+import { rememberTable, tablesApi } from '../api/tables';
 import { ColorGrid } from '../components/dtGrid/ColorGrid';
 import { isColor } from '../components/dtGrid/colors';
 import { InputPad } from '../components/dtGrid/InputPad';
@@ -11,10 +13,9 @@ import { StatsPanel } from '../components/dtGrid/StatsPanel';
 import { useDtGrid } from '../hooks/useDtGrid';
 import './dragonTiger.css';
 
-const TABLE_CODE = 'dt-1';
 const RANGE_KEY = 'kardex-dt-range';
 
-type Confirm = { action: 'undo' | 'end' | 'discard'; text: string } | null;
+type Confirm = { action: 'undo' | 'end' | 'discard' | 'trash'; text: string } | null;
 
 function loadRange(): RangePreset {
   try {
@@ -25,12 +26,20 @@ function loadRange(): RangePreset {
   }
 }
 
-export function DragonTigerRoom() {
+export function TableRoom({ code }: { code: string }) {
   const navigate = useNavigate();
   const [range, setRange] = useState<RangePreset>(loadRange);
   const [confirm, setConfirm] = useState<Confirm>(null);
-  const grid = useDtGrid(TABLE_CODE, scopeOf(range));
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
+  const [settingsError, setSettingsError] = useState('');
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const grid = useDtGrid(code, scopeOf(range));
   const { state, queue } = grid;
+
+  useEffect(() => {
+    rememberTable(code);
+  }, [code]);
 
   useEffect(() => {
     try {
@@ -66,9 +75,40 @@ export function DragonTigerRoom() {
     grid.deleteLast();
   };
 
+  const openSettings = () => {
+    if (!state) return;
+    setNameDraft(state.table.name);
+    setSettingsError('');
+    setSettingsOpen(!settingsOpen);
+  };
+
+  const saveName = () => {
+    if (!state || settingsBusy) return;
+    setSettingsBusy(true);
+    tablesApi
+      .rename(code, nameDraft)
+      .then(() => {
+        setSettingsOpen(false);
+        return grid.reload();
+      })
+      .catch((error: unknown) => setSettingsError(errorDetail(error, 'เปลี่ยนชื่อไม่สำเร็จ')))
+      .then(() => setSettingsBusy(false));
+  };
+
+  const trashTable = () => {
+    tablesApi
+      .trash(code)
+      .then(() => navigate('/'))
+      .catch((error: unknown) => setSettingsError(errorDetail(error, 'ลบโต๊ะไม่สำเร็จ')));
+  };
+
   const runConfirmed = () => {
     if (!confirm) return;
     setConfirm(null);
+    if (confirm.action === 'trash') {
+      trashTable();
+      return;
+    }
     if (confirm.action === 'undo') grid.deleteLast();
     if (confirm.action === 'end') grid.endRound();
     if (confirm.action === 'discard') grid.discardRound();
@@ -104,13 +144,68 @@ export function DragonTigerRoom() {
           หน้าหลัก
         </button>
         <div className="dtg-header__title">
-          <h1>เสือมังกร · {state ? state.table.name : '…'}</h1>
+          <h1>ตารางสถิติ · {state ? state.table.name : '…'}</h1>
           <span>{state ? `${state.total_rounds.toLocaleString()} รอบ` : 'กำลังโหลด…'}</span>
         </div>
-        <span className={grid.online ? 'dtg-status dtg-status--on' : 'dtg-status dtg-status--off'}>
-          {grid.online ? (saving ? `กำลังบันทึก… (${saving})` : 'ออนไลน์') : 'ออฟไลน์'}
+        <span className="dtg-header__right">
+          <span className={grid.online ? 'dtg-status dtg-status--on' : 'dtg-status dtg-status--off'}>
+            {grid.online ? (saving ? `กำลังบันทึก… (${saving})` : 'ออนไลน์') : 'ออฟไลน์'}
+          </span>
+          <button type="button" className="dtg-iconbtn" onClick={openSettings} disabled={!state} aria-label="จัดการโต๊ะ">
+            <Settings className="dtg-icon dtg-icon--solo" />
+          </button>
         </span>
       </header>
+
+      {settingsOpen && state ? (
+        <div className="dtg-settings">
+          <label className="dtg-settings__label" htmlFor="table-name">
+            ชื่อโต๊ะ
+          </label>
+          <input
+            id="table-name"
+            className="dtg-input dtg-input--wide"
+            value={nameDraft}
+            maxLength={50}
+            onChange={(event) => setNameDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') saveName();
+            }}
+          />
+          <button type="button" className="dtg-btn dtg-btn--dark" onClick={saveName} disabled={settingsBusy || !nameDraft.trim()}>
+            บันทึกชื่อ
+          </button>
+          <button type="button" className="dtg-btn" onClick={() => setSettingsOpen(false)}>
+            ปิด
+          </button>
+          <button
+            type="button"
+            className="dtg-btn dtg-btn--danger dtg-settings__delete"
+            onClick={() =>
+              setConfirm({
+                action: 'trash',
+                text: `ย้าย "${state.table.name}" ไปที่โต๊ะที่ลบแล้ว? ข้อมูล ${state.total_rounds.toLocaleString()} รอบยังอยู่ กู้คืนได้จากหน้าหลัก`,
+              })
+            }
+          >
+            ลบโต๊ะ
+          </button>
+          {settingsError ? <span className="dtg-range__error">{settingsError}</span> : null}
+          {confirm && confirm.action === 'trash' ? (
+            <div className="dtg-confirm">
+              <span>{confirm.text}</span>
+              <span className="dtg-confirm__buttons">
+                <button type="button" className="dtg-btn" onClick={() => setConfirm(null)}>
+                  ยกเลิก
+                </button>
+                <button type="button" className="dtg-btn dtg-btn--danger" onClick={runConfirmed}>
+                  ยืนยัน
+                </button>
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {!grid.online ? <div className="dtg-notice dtg-notice--error">เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ — จะลองใหม่อัตโนมัติ</div> : null}
       {grid.notice ? (
@@ -122,7 +217,9 @@ export function DragonTigerRoom() {
         </div>
       ) : null}
 
-      {state ? (
+      {grid.missing ? (
+        <div className="dtg-notice dtg-notice--error">ไม่พบโต๊ะนี้ — อาจถูกลบไปแล้ว กลับไปเลือกโต๊ะที่หน้าหลัก</div>
+      ) : state ? (
         <>
           <RangePicker value={range} totalRounds={state.total_rounds} onChange={setRange} />
 
@@ -135,7 +232,7 @@ export function DragonTigerRoom() {
             onLoadMore={() => void grid.loadMore()}
           />
 
-          {confirm ? (
+          {confirm && confirm.action !== 'trash' ? (
             <div className="dtg-confirm">
               <span>{confirm.text}</span>
               <span className="dtg-confirm__buttons">

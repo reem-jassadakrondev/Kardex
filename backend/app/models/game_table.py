@@ -9,7 +9,7 @@ from app.models.base import Base
 
 
 class GameTable(Base):
-    """A physical/virtual table whose rounds are recorded (Dragon Tiger color grid from phase 1)."""
+    """A physical table whose rounds are recorded on the color grid. Each table's data is separate."""
 
     __tablename__ = "game_tables"
 
@@ -21,3 +21,5 @@ class GameTable(Base):
     # Bumped on every grid write; clients send the version they saw (optimistic lock across devices).
     version: Mapped[int] = mapped_column(Integer, default=0, server_default="0", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    # Soft delete: set = in the trash (hidden, read-only, restorable). Purging removes the rows for good.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

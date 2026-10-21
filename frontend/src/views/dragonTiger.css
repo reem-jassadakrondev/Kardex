@@ -1,5 +1,5 @@
 /*
- * Dragon Tiger color grid. Plain CSS on purpose so it renders on old iPad/Android browsers:
+ * Color grid (ตารางสถิติ). Plain CSS on purpose so it renders on old iPad/Android browsers:
  * hex colors only, no flex/grid `gap`, no `inset`/`aspect-ratio`, prefixed sticky.
  */
 
@@ -570,4 +570,69 @@
   margin: 8px 0 0;
   color: #a1a1aa;
   font-size: 11px;
+}
+
+/* --- table settings (rename / delete) --------------------------------------------------- */
+
+.dtg-header__right {
+  white-space: nowrap;
+}
+
+.dtg-iconbtn {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-left: 6px;
+  padding: 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #71717a;
+  line-height: 0;
+  vertical-align: middle;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dtg-iconbtn:disabled {
+  opacity: 0.4;
+}
+
+.dtg-icon--solo {
+  width: 18px;
+  height: 18px;
+  margin-right: 0;
+  vertical-align: middle;
+}
+
+.dtg-settings {
+  padding: 10px 12px 4px;
+  border: 1px solid #ededf0;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+.dtg-settings > * {
+  margin: 0 8px 6px 0;
+  vertical-align: middle;
+}
+
+.dtg-settings__label {
+  display: inline-block;
+  color: #71717a;
+  font-size: 13px;
+}
+
+.dtg-input--wide {
+  width: 220px;
+  max-width: 100%;
+}
+
+.dtg-settings__delete {
+  float: right;
+  margin-right: 0;
+}
+
+.dtg-settings .dtg-confirm {
+  clear: both;
+  margin: 4px 0 8px;
 }

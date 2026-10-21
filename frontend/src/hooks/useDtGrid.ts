@@ -56,12 +56,20 @@ export function useDtGrid(code: string, scope: StatsScope) {
   const [queue, setQueue] = useState<Op[]>([]); // queue[0] is in flight while sending
   const [notice, setNotice] = useState<Notice>(null);
   const [online, setOnline] = useState(true);
+  /** The table doesn't exist or was moved to the trash (404). */
+  const [missing, setMissing] = useState(false);
 
   const versionRef = useRef<number | null>(null);
   const busyRef = useRef(false);
   const queueRef = useRef<Op[]>([]);
   const scopeRef = useRef(scope);
   const scopeKey = JSON.stringify(scope);
+
+  /** Network/server failure handler shared by loads and polling: a 404 means the table is gone. */
+  const onLoadError = useCallback((error: unknown) => {
+    if (error instanceof ApiError && error.status === 404) setMissing(true);
+    else setOnline(false);
+  }, []);
 
   // Declared first so later effects in the same commit see the new scope.
   useEffect(() => {
@@ -89,13 +97,13 @@ export function useDtGrid(code: string, scope: StatsScope) {
     const load = versionRef.current === null ? fetchAll() : dtGridApi.state(code, scopeRef.current).then((s) => {
       if (!cancelled) setState(s);
     });
-    load.catch(() => {
-      if (!cancelled) setOnline(false);
+    load.catch((error: unknown) => {
+      if (!cancelled) onLoadError(error);
     });
     return () => {
       cancelled = true;
     };
-  }, [code, scopeKey, fetchAll]);
+  }, [code, scopeKey, fetchAll, onLoadError]);
 
   // Poll for changes made on other devices.
   useEffect(() => {
@@ -110,10 +118,10 @@ export function useDtGrid(code: string, scope: StatsScope) {
           setState(next);
           return undefined;
         })
-        .catch(() => setOnline(false));
+        .catch(onLoadError);
     }, POLL_MS);
     return () => window.clearInterval(timer);
-  }, [code, fetchAll]);
+  }, [code, fetchAll, onLoadError]);
 
   const send = useCallback(
     (op: Op, version: number): Promise<WriteResult> => {
@@ -147,6 +155,8 @@ export function useDtGrid(code: string, scope: StatsScope) {
         if (error instanceof ApiError && error.status === 409 && error.body && 'current_version' in error.body) {
           await fetchAll().catch(() => undefined);
           setNotice({ tone: 'error', text: `มีการแก้ไขจากอุปกรณ์อื่น — โหลดข้อมูลล่าสุดแล้ว${lost || ' กรุณาตรวจสอบแล้วบันทึกอีกครั้ง'}` });
+        } else if (error instanceof ApiError && error.status === 404) {
+          setMissing(true);
         } else if (error instanceof ApiError) {
           const detail = error.body && typeof error.body.detail === 'string' ? error.body.detail : error.message;
           setNotice({ tone: 'error', text: `ทำรายการไม่สำเร็จ: ${detail}${lost}` });
@@ -213,11 +223,14 @@ export function useDtGrid(code: string, scope: StatsScope) {
     pendingValues,
     notice,
     online,
+    missing,
     add,
     deleteLast,
     endRound,
     discardRound,
     loadMore,
     setNotice,
+    /** Reload state + rounds from the server (e.g. after renaming the table). */
+    reload: fetchAll,
   };
 }

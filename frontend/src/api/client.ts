@@ -75,3 +75,20 @@ export async function apiPost<T>(path: string, payload: unknown, query?: Query, 
 export async function apiDelete<T>(path: string, query?: Query, headers?: Record<string, string>): Promise<T> {
   return requestJson<T>(withQuery(path, query), { method: 'DELETE', headers });
 }
+
+export async function apiPatch<T>(path: string, payload: unknown, headers?: Record<string, string>): Promise<T> {
+  return requestJson<T>(path, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      ...headers,
+    },
+    body: JSON.stringify(payload),
+  });
+}
+
+/** The server's `detail` message for an ApiError, or a fallback. */
+export function errorDetail(error: unknown, fallback: string): string {
+  if (error instanceof ApiError && error.body && typeof error.body.detail === 'string') return error.body.detail;
+  return fallback;
+}
