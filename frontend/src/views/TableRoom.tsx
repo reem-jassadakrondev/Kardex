@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { errorDetail } from '../api/client';
 import type { PlayValue } from '../api/dtGrid';
 import { rememberTable, tablesApi } from '../api/tables';
+import { CalcPanel } from '../components/calc/CalcPanel';
 import { ColorGrid } from '../components/dtGrid/ColorGrid';
 import { MatchPicker } from '../components/dtGrid/MatchPicker';
 import { isColor } from '../components/dtGrid/colors';
@@ -18,6 +19,19 @@ import './dragonTiger.css';
 const RANGE_KEY = 'kardex-dt-range';
 const WINDOW_KEY = 'kardex-match-window';
 const DEFAULT_WINDOW = 5;
+const MODE_KEY = 'kardex-view-mode';
+const SPLIT_KEY = 'kardex-view-split';
+
+/** record = the recording grid (5 colors); calc = หน้าคำนวณ (3 colors, nothing saved). */
+export type ViewMode = 'record' | 'calc';
+
+function loadFlag(key: string, value: string): boolean {
+  try {
+    return localStorage.getItem(key) === value;
+  } catch {
+    return false;
+  }
+}
 
 type Confirm = { action: 'undo' | 'end' | 'discard' | 'trash'; text: string } | null;
 
@@ -39,8 +53,11 @@ function loadRange(): RangePreset {
   }
 }
 
-export function TableRoom({ code }: { code: string }) {
+export function TableRoom({ code, initialMode }: { code: string; initialMode?: ViewMode }) {
   const navigate = useNavigate();
+  // Both modes stay mounted while switching, so nothing typed or loaded is lost.
+  const [mode, setMode] = useState<ViewMode>(() => initialMode || (loadFlag(MODE_KEY, 'calc') ? 'calc' : 'record'));
+  const [split, setSplit] = useState<boolean>(() => loadFlag(SPLIT_KEY, '1'));
   const [range, setRange] = useState<RangePreset>(loadRange);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -61,10 +78,15 @@ export function TableRoom({ code }: { code: string }) {
     try {
       localStorage.setItem(RANGE_KEY, JSON.stringify(range));
       localStorage.setItem(WINDOW_KEY, String(windowSize));
+      localStorage.setItem(MODE_KEY, mode);
+      localStorage.setItem(SPLIT_KEY, split ? '1' : '0');
     } catch {
       /* storage blocked — the range just won't be remembered */
     }
-  }, [range, windowSize]);
+  }, [range, windowSize, mode, split]);
+
+  const showRecord = split || mode === 'record';
+  const showCalc = split || mode === 'calc';
 
   const saving = queue.length;
 
@@ -140,12 +162,13 @@ export function TableRoom({ code }: { code: string }) {
   };
 
   // Keyboard shortcuts for desktop / iPad with keyboard.
-  const handlers = useRef({ record, requestUndo });
+  const handlers = useRef({ record, requestUndo, active: showRecord });
   useEffect(() => {
-    handlers.current = { record, requestUndo };
+    handlers.current = { record, requestUndo, active: showRecord };
   });
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (!handlers.current.active) return; // calc mode on its own handles the keys
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
@@ -162,7 +185,7 @@ export function TableRoom({ code }: { code: string }) {
   }, []);
 
   return (
-    <div className="dtg-page">
+    <div className={split ? 'dtg-page dtg-page--split' : 'dtg-page'}>
       <header className="dtg-header">
         <button type="button" className="dtg-btn" onClick={() => navigate('/')}>
           <ArrowLeft className="dtg-icon" />
@@ -246,8 +269,29 @@ export function TableRoom({ code }: { code: string }) {
         <div className="dtg-notice dtg-notice--error">ไม่พบโต๊ะนี้ — อาจถูกลบไปแล้ว กลับไปเลือกโต๊ะที่หน้าหลัก</div>
       ) : state ? (
         <>
+          <div className="dtg-viewbar">
+            {split ? null : (
+              <span className="dtg-segment">
+                <button type="button" className={mode === 'record' ? 'dtg-segment__btn dtg-segment__btn--on' : 'dtg-segment__btn'} onClick={() => setMode('record')}>
+                  บันทึก
+                </button>
+                <button type="button" className={mode === 'calc' ? 'dtg-segment__btn dtg-segment__btn--on' : 'dtg-segment__btn'} onClick={() => setMode('calc')}>
+                  คำนวณ
+                </button>
+              </span>
+            )}
+            <button type="button" className={split ? 'dtg-chip dtg-chip--active' : 'dtg-chip'} onClick={() => setSplit(!split)}>
+              {split ? '✓ ' : ''}แสดงคู่กัน
+            </button>
+            {split ? <span className="dtg-viewbar__hint">บันทึก (5 สี) ด้านบน · คำนวณ (3 สี) ด้านล่าง · แป้นพิมพ์ใช้กับการบันทึก</span> : null}
+          </div>
+
           <RangePicker value={range} totalRounds={state.total_rounds} onChange={setRange} />
-          <MatchPicker size={windowSize} match={filtering ? matches.data : null} stale={matches.stale} onChange={setWindowSize} />
+          {showRecord ? (
+            <MatchPicker size={windowSize} match={filtering ? matches.data : null} stale={matches.stale} onChange={setWindowSize} />
+          ) : null}
+
+          <div className={showRecord ? 'dtg-record' : 'dtg-record dtg-hidden'}>
 
           <ColorGrid
             rounds={history}
@@ -304,6 +348,20 @@ export function TableRoom({ code }: { code: string }) {
             <div className="dtg-col">
               <StatsPanel stats={state.stats} saving={saving} match={filtering ? match : null} matchStale={matches.stale} />
             </div>
+          </div>
+          </div>
+
+          <div className={showCalc ? 'dtg-calcwrap' : 'dtg-calcwrap dtg-hidden'}>
+            <CalcPanel
+              code={code}
+              version={state.version}
+              scope={scope}
+              windowSize={windowSize}
+              onWindowChange={setWindowSize}
+              currentRow={current.results.slice(0, state.cursor.position - 1) + grid.pendingValues.join('')}
+              split={split}
+              keyboard={!split && mode === 'calc'}
+            />
           </div>
         </>
       ) : (

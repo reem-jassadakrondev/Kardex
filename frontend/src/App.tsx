@@ -8,12 +8,19 @@ function TableRoute() {
   return <TableRoom key={code} code={code} />;
 }
 
+/** Old link to the calc page: the table page opened in calc mode. */
+function CalcRoute() {
+  const { code = '' } = useParams();
+  return <TableRoom key={code} code={code} initialMode="calc" />;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomeLobby />} />
         <Route path="/t/:code" element={<TableRoute />} />
+        <Route path="/t/:code/calc" element={<CalcRoute />} />
         {/* v1.0 link saved on the iPads' home screens */}
         <Route path="/dragon-tiger" element={<Navigate to="/t/dt-1" replace />} />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -12,6 +12,7 @@ from app.core.database import get_db
 from app.models.dt import DtRound
 from app.models.game_table import GameTable
 from app.schemas.dt import (
+    CalcOut,
     CursorOut,
     GridPage,
     MatchesOut,
@@ -146,6 +147,45 @@ async def get_matches(
         sample_size=m.sample_size,
         counts=m.counts,
         percentages=m.percentages,
+        rounds=[round_out(row) for row in m.rounds],
+        has_more=m.has_more,
+    )
+
+
+def _percent(counts: dict[str, int]) -> dict[str, float]:
+    n = sum(counts.values())
+    return {color: round(count * 100 / n, 1) if n else 0.0 for color, count in counts.items()}
+
+
+@router.get("/{code}/calc", response_model=CalcOut)
+async def get_calc(
+    table: GameTable = Depends(load_table),
+    scope: StatsRange = Depends(),
+    pattern: str = Query("", pattern=r"^[RBJ-]{0,60}$", description="typed row: R red, B blue, J joker, - skip"),
+    window: int = Query(5, ge=0, le=60, description="compare the last N typed cells; 0 = all"),
+    before_round: int | None = Query(None, ge=1),
+    limit: int = Query(50, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+) -> CalcOut:
+    """Read-only: nothing is written, the typed row only lives on the device."""
+    last = await dt_grid.last_round(db, table.id)
+    m = await matching.match_pattern(
+        db, table, last, pattern, window, scope.from_round, scope.to_round, scope.last_rounds, before_round, limit
+    )
+    return CalcOut(
+        version=table.version,
+        position=m.position,
+        window_from=m.window_from,
+        window_to=m.window_to,
+        pattern=m.pattern,
+        range=RangeOut(from_round=m.range_from, to_round=m.range_to),
+        total_matches=m.total,
+        sample_size=m.sample_size,
+        counts=m.counts,
+        percentages=m.percentages,
+        all_sample_size=sum(m.all_counts.values()),
+        all_counts=m.all_counts,
+        all_percentages=_percent(m.all_counts),
         rounds=[round_out(row) for row in m.rounds],
         has_more=m.has_more,
     )

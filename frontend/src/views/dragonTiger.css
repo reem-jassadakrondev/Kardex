@@ -740,3 +740,88 @@
 .dtg-rates--sm .dtg-rate {
   padding: 2px 6px;
 }
+
+/* --- view switch: บันทึก / คำนวณ / แสดงคู่กัน -------------------------------------------- */
+
+.dtg-hidden {
+  display: none;
+}
+
+.dtg-viewbar > * {
+  margin: 0 8px 0 0;
+  vertical-align: middle;
+}
+
+.dtg-viewbar .dtg-chip {
+  margin-bottom: 0;
+}
+
+.dtg-segment {
+  display: inline-block;
+  padding: 3px;
+  border-radius: 12px;
+  background: #f4f4f5;
+  white-space: nowrap;
+}
+
+.dtg-segment__btn {
+  -webkit-appearance: none;
+  appearance: none;
+  min-width: 96px;
+  padding: 8px 18px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #52525b;
+  font: inherit;
+  font-size: 15px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.dtg-segment__btn--on {
+  background: #ffffff;
+  color: #18181b;
+  font-weight: 600;
+  box-shadow: 0 1px 3px #d4d4d8;
+}
+
+.dtg-viewbar__hint {
+  color: #a1a1aa;
+  font-size: 12px;
+}
+
+.dtg-record > * + *,
+.dtg-calcwrap > * + *,
+.calc > * + * {
+  margin-top: 10px;
+}
+
+.dtg-page--split .dtg-calcwrap {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 2px dashed #ddd6fe;
+}
+
+.dtg-page--split .dtg-gridbox {
+  max-height: 30vh;
+}
+
+.calc__title {
+  margin: 0;
+  color: #6d28d9;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.calc__title span {
+  margin-left: 6px;
+  color: #a1a1aa;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.dtg-btn--copy {
+  border-color: #ddd6fe;
+  color: #6d28d9;
+}

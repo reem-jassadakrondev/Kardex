@@ -66,6 +66,25 @@ export interface MatchesResult {
   has_more: boolean;
 }
 
+/** Calc page (หน้าคำนวณ): matches for a typed row that is never stored. Colors R / B / J (Joker). */
+export interface CalcResult {
+  version: number;
+  position: number;
+  window_from: number | null;
+  window_to: number | null;
+  pattern: string;
+  range: { from_round: number | null; to_round: number | null };
+  total_matches: number | null;
+  sample_size: number;
+  counts: Record<string, number>;
+  percentages: Record<string, number>;
+  all_sample_size: number;
+  all_counts: Record<string, number>;
+  all_percentages: Record<string, number>;
+  rounds: GridRound[];
+  has_more: boolean;
+}
+
 export interface StatsScope {
   from_round?: number;
   to_round?: number;
@@ -103,6 +122,9 @@ export const dtGridApi = {
   /** `size` = compare the last N cells of the current round; 0 = the whole row so far. */
   matches: (code: string, size: number, scope: StatsScope, beforeRound?: number, limit = 50) =>
     apiGet<MatchesResult>(`${base(code)}/matches`, { ...scope, window: size, before_round: beforeRound, limit }),
+  /** Read-only: `pattern` = typed row of R / B / J / -. */
+  calc: (code: string, pattern: string, size: number, scope: StatsScope, beforeRound?: number, limit = 50) =>
+    apiGet<CalcResult>(`${base(code)}/calc`, { ...scope, pattern, window: size, before_round: beforeRound, limit }),
   discardRound: (code: string, version: number, scope: StatsScope) =>
     apiDelete<WriteResult>(`${base(code)}/rounds/current`, { ...scope, version }, headers()),
 };

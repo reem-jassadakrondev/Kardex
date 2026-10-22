@@ -96,3 +96,23 @@ class MatchesOut(BaseModel):
     percentages: dict[str, float]
     rounds: list[RoundOut]
     has_more: bool
+
+
+class CalcOut(BaseModel):
+    """Calc page (หน้าคำนวณ): matches for a typed, never-stored row in 3 colors R / B / J."""
+
+    version: int
+    position: int
+    window_from: int | None
+    window_to: int | None
+    pattern: str
+    range: RangeOut
+    total_matches: int | None
+    sample_size: int
+    counts: dict[str, int]
+    percentages: dict[str, float]
+    all_sample_size: int
+    all_counts: dict[str, int]
+    all_percentages: dict[str, float]
+    rounds: list[RoundOut]
+    has_more: bool

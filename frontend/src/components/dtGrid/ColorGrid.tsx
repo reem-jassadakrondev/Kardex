@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef } from 'react';
 import type { Cursor, GridRound, PlayValue } from '../../api/dtGrid';
-import { COLOR_META, isColor } from './colors';
+import { cellMeta } from './colors';
 
 export interface ColumnWindow {
   from: number;
@@ -23,18 +23,25 @@ interface ColorGridProps {
   stale: boolean;
   hasMore: boolean;
   onLoadMore: () => void;
+  /** Row header of the pinned row (default: its round number). */
+  currentLabel?: string;
+  /** How a stored cell is shown (the calc page shows green/yellow/black as Joker). */
+  mapValue?: (value: string) => string;
 }
+
+const identity = (value: string) => value;
 
 const NO_PENDING: PlayValue[] = [];
 
 const STATUS_MARK: Record<GridRound['status'], string> = { open: '', complete: '', ended_early: '⏹' };
 
-function Cell({ value, className, pending }: { value: string; className: string; pending: PlayValue | null }) {
+function Cell({ value, className, pending }: { value: string; className: string; pending: string | null }) {
   const shown = pending || value;
+  const meta = cellMeta(shown);
   return (
     <td className={pending ? `${className} dtg-cell--pending` : className}>
-      {isColor(shown) ? (
-        <span className="dtg-dot" style={{ backgroundColor: COLOR_META[shown].bg, color: COLOR_META[shown].fg }}>
+      {meta ? (
+        <span className="dtg-dot" style={{ backgroundColor: meta.bg, color: meta.fg }}>
           {shown}
         </span>
       ) : shown === '-' ? (
@@ -54,9 +61,11 @@ interface RowProps {
   /** Current row only: the next free cell and the queued values from the server cursor on. */
   cursorPosition: number;
   pending: PlayValue[];
+  label?: string;
+  mapValue: (value: string) => string;
 }
 
-const Row = memo(function Row({ round, columns, windowFrom, windowTo, nextColumn, cursorPosition, pending }: RowProps) {
+const Row = memo(function Row({ round, columns, windowFrom, windowTo, nextColumn, cursorPosition, pending, label, mapValue }: RowProps) {
   const cells = [];
   const nextFree = cursorPosition ? cursorPosition + pending.length : 0;
   for (let position = 1; position <= columns; position += 1) {
@@ -65,12 +74,12 @@ const Row = memo(function Row({ round, columns, windowFrom, windowTo, nextColumn
     if (position === nextFree) className += ' dtg-cell--cursor';
     else if (position === nextColumn) className += ' dtg-cell--next';
     else if (position >= windowFrom && position <= windowTo) className += ' dtg-cell--win';
-    cells.push(<Cell key={position} value={round.results.charAt(position - 1)} className={className} pending={queued || null} />);
+    cells.push(<Cell key={position} value={mapValue(round.results.charAt(position - 1))} className={className} pending={queued || null} />);
   }
   return (
     <tr className={cursorPosition ? 'dtg-row--current' : undefined}>
       <th className="dtg-rowhead" scope="row">
-        {round.round_no.toLocaleString()}
+        {label || round.round_no.toLocaleString()}
         {STATUS_MARK[round.status] ? <span className="dtg-rowmark" title="จบรอบก่อนครบ">{STATUS_MARK[round.status]}</span> : null}
       </th>
       {cells}
@@ -94,6 +103,8 @@ export function ColorGrid({
   stale,
   hasMore,
   onLoadMore,
+  currentLabel,
+  mapValue = identity,
 }: ColorGridProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const nextPosition = cursor.position + pending.length;
@@ -157,6 +168,7 @@ export function ColorGrid({
                 nextColumn={nextColumn}
                 cursorPosition={0}
                 pending={NO_PENDING}
+                mapValue={mapValue}
               />
             ))
           ) : (
@@ -177,6 +189,8 @@ export function ColorGrid({
             nextColumn={0}
             cursorPosition={cursor.position}
             pending={pending}
+            label={currentLabel}
+            mapValue={mapValue}
           />
         </tfoot>
       </table>
