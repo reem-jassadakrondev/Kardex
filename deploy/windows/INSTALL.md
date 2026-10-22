@@ -46,6 +46,7 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Port 8080 -BackupCopyDir "
 | `status.bat` | เช็คว่า server/ฐานข้อมูลทำงาน, backup ล่าสุดเมื่อไหร่, มี error ไหม |
 | `backup-now.bat` | backup ทันที (ปกติทำเองทุกวันตี 3 — ถ้าเครื่องปิดอยู่จะทำตอนเปิดเครื่อง) |
 | `restore.bat <ไฟล์>` | กู้คืนจาก backup — **แทนที่ข้อมูลทั้งหมด** ต้องพิมพ์ `RESTORE` ยืนยัน |
+| `import-rounds.bat` | นำเข้าข้อมูลจาก Excel (.xlsx / .csv) ลงโต๊ะ — **แทนที่ข้อมูลของโต๊ะนั้น** ต้องพิมพ์ `IMPORT` ยืนยัน (ดูด้านล่าง) |
 | `install.bat` | ซ่อม/ติดตั้งซ้ำ (ข้อมูลและรหัสผ่านเดิมอยู่ครบ) |
 
 ### Backup
@@ -56,6 +57,20 @@ powershell -ExecutionPolicy Bypass -File install.ps1 -Port 8080 -BackupCopyDir "
   ```
   ชี้ไปโฟลเดอร์ที่ sync ขึ้น cloud (เช่น Google Drive for desktop / OneDrive) หรือ USB — ถ้าโฟลเดอร์ไม่พร้อม (ถอด USB) backup ในเครื่องยังทำปกติ แค่บันทึกเตือนใน `logs\backup.log`
 - **ทดสอบกู้คืนอย่างน้อยครั้งแรกหลังติดตั้ง** (backup ที่กู้ไม่ได้ = ไม่มี backup)
+
+### นำเข้าข้อมูลจาก Excel
+
+รูปแบบไฟล์ (เหมือน sheet "DAI LY" ของลูกค้า): แถวละ 1 รอบ · **คอลัมน์ A = เลข Game** · คอลัมน์ถัดไป S1…S60 = ผล **1 แดง · 2 น้ำเงิน · 3 เหลือง · 4 ดำ · 5 เขียว** (ใช้ R B Y K G หรือ `-` = ข้าม ก็ได้) · แถวหัวตาราง / แถวที่ยังไม่มีผลจะถูกข้าม · ช่องว่างกลางแถว = ข้าม · ช่องว่างท้ายแถว = รอบจบก่อนครบ
+
+1. **ลากไฟล์ .xlsx (หรือ .csv) ไปวางบน `C:\Kardex\deploy\windows\import-rounds.bat`** (ใช้ sheet แรกของไฟล์ และโต๊ะ `dt-1` = โต๊ะ 1)
+2. ระบบตรวจไฟล์ก่อน แล้วแสดงจำนวนรอบ / จำนวนแต่ละสี / รอบแรก-รอบสุดท้าย — ถ้ามีค่าผิด (เช่น `23`) จะบอกเซลล์ที่ต้องแก้ เช่น `AO138` และ **ไม่เปลี่ยนข้อมูลใดๆ**
+3. ตรวจตัวเลขให้ถูก แล้วพิมพ์ `IMPORT` → ระบบ backup ก่อน → **ลบข้อมูลเดิมของโต๊ะนั้นทั้งหมด** แล้วใส่ข้อมูลจากไฟล์เป็นรอบ 1…N → iPad โหลดข้อมูลใหม่เองในไม่กี่วินาที
+4. ถ้านำเข้าผิด: `restore.bat` ด้วยไฟล์ backup ล่าสุดใน `C:\Kardex\backups`
+
+โต๊ะอื่น / sheet อื่น (PowerShell แบบ admin ที่ `C:\Kardex\deploy\windows`):
+```powershell
+powershell -ExecutionPolicy Bypass -File import-rounds.ps1 -File "D:\data\012022.xlsx" -Table "โต๊ะ 2" -Sheet "DAI LY"
+```
 
 ### อัปเดตเวอร์ชัน
 1. สร้าง zip ใหม่บนเครื่อง dev: `deploy/build-package.sh` → ได้ `release/kardex-<version>.zip`
